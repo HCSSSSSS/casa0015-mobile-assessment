@@ -1,0 +1,5 @@
+package com.hcs.sense_food
+
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity : FlutterActivity()
