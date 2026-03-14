@@ -34,6 +34,8 @@ dependencies:
   table_calendar: ^3.1.2        # 带日历的饮食记录条
   google_maps_flutter: ^2.7.0   # 众包地图展示
 
+  image_picker: ^1.1.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -41,6 +43,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
 
   # 如果你后面需要加入自己的图标或图片，在这里配置 assets:
   # assets:

@@ -1,19 +1,22 @@
+import 'dart:io';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
+import 'package:image_picker/image_picker.dart';
+
 import 'providers/sensor_provider.dart';
+import 'service/ai_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // 注意：在实际设备运行前，你需要完成 Firebase 控制台配置并下载 google-services.json
   try {
     await Firebase.initializeApp();
   } catch (e) {
     debugPrint("Firebase initialization failed: $e");
   }
-  
+
   runApp(
     MultiProvider(
       providers: [
@@ -57,19 +60,45 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       backgroundColor: const Color(0xFFF8FBF8),
       body: IndexedStack(
         index: _selectedIndex,
-        children: [
-          const DashboardScreen(),
-          const Center(child: Text("Connected Map")),
-          const Center(child: Text("Forum")),
-          const Center(child: Text("Settings")),
+        children: const [
+          DashboardScreen(),
+          Center(child: Text("Connected Map")),
+          Center(child: Text("Forum")),
+          Center(child: Text("Settings")),
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          // 这里将来集成 Gemini AI 识图逻辑
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("AI Vision Coming Soon!")),
-          );
+        onPressed: () async {
+          final ImagePicker picker = ImagePicker();
+          final XFile? photo = await picker.pickImage(source: ImageSource.camera);
+
+          if (photo != null) {
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("AI is analyzing your food... ⏳"),
+                duration: Duration(seconds: 3),
+              ),
+            );
+
+            File imageFile = File(photo.path);
+            final result = await AIService.analyzeFood(imageFile);
+
+            if (!context.mounted) return;
+            if (result != null) {
+              debugPrint("================ AI 识别结果 ================");
+              debugPrint(result);
+              debugPrint("=============================================");
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Analysis Complete! Check Console ✅")),
+              );
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Analysis Failed. Check API Key or Network ❌")),
+              );
+            }
+          }
         },
         backgroundColor: Colors.green,
         shape: const CircleBorder(),
@@ -100,7 +129,6 @@ class DashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 使用 Provider 获取传感器数据
     final sensorProvider = context.watch<SensorProvider>();
 
     return SingleChildScrollView(
