@@ -1,16 +1,27 @@
 import 'dart:io';
+import 'dart:convert'; // 用于解析 AI 返回的 JSON 数据
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // 引入环境变量保险箱
 
 import 'providers/sensor_provider.dart';
 import 'service/ai_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 1. 加载安全环境变量 (.env)
+  try {
+    await dotenv.load(fileName: ".env");
+  } catch (e) {
+    debugPrint("环境变量加载失败，请检查是否创建了 .env 文件: $e");
+  }
+
+  // 2. 初始化 Firebase
   try {
     await Firebase.initializeApp();
   } catch (e) {
@@ -19,7 +30,7 @@ Future<void> main() async {
 
   runApp(
     MultiProvider(
-      providers: [
+      providers:[
         ChangeNotifierProvider(create: (_) => SensorProvider()),
       ],
       child: const SenseFoodApp(),
@@ -60,13 +71,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       backgroundColor: const Color(0xFFF8FBF8),
       body: IndexedStack(
         index: _selectedIndex,
-        children: const [
+        children: const[
           DashboardScreen(),
           Center(child: Text("Connected Map")),
           Center(child: Text("Forum")),
           Center(child: Text("Settings")),
         ],
       ),
+      // 核心交互：AI 拍照与炫酷结果弹窗
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
           final ImagePicker picker = ImagePicker();
@@ -85,18 +97,29 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             final result = await AIService.analyzeFood(imageFile);
 
             if (!context.mounted) return;
-            if (result != null) {
-              debugPrint("================ AI 识别结果 ================");
-              debugPrint(result);
-              debugPrint("=============================================");
+            ScaffoldMessenger.of(context).hideCurrentSnackBar(); // 隐藏加载提示
 
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Analysis Complete! Check Console ✅")),
-              );
+            if (result != null) {
+              try {
+                // 清洗并解析 JSON
+                String cleanJson = result.replaceAll('```json', '').replaceAll('```', '').trim();
+                final foodData = jsonDecode(cleanJson);
+
+                // 冲刺高分交互：从底部弹出一个精美的识别结果卡片
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (context) {
+                    return _buildResultBottomSheet(context, foodData);
+                  },
+                );
+              } catch (e) {
+                debugPrint("JSON Parse Error: $e\nRaw data: $result");
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Analysis format error, please try again. ❌")));
+              }
             } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Analysis Failed. Check API Key or Network ❌")),
-              );
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Analysis Failed. Check API Key or Network ❌")));
             }
           }
         },
@@ -111,7 +134,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         notchMargin: 8.0,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
+          children:[
             IconButton(icon: const Icon(Icons.calendar_today), onPressed: () => setState(() => _selectedIndex = 0)),
             IconButton(icon: const Icon(Icons.map_outlined), onPressed: () => setState(() => _selectedIndex = 1)),
             const SizedBox(width: 40),
@@ -122,7 +145,88 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       ),
     );
   }
+
+  // 炫酷的底部营养卡片 UI (完美复刻你截图的风格)
+  Widget _buildResultBottomSheet(BuildContext context, Map<String, dynamic> foodData) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.65,
+      padding: const EdgeInsets.all(24),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children:[
+          Center(
+            child: Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10))),
+          ),
+          const SizedBox(height: 20),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children:[
+              Text("AI Vision Result", style: TextStyle(color: Colors.green.shade700, fontWeight: FontWeight.bold, fontSize: 16)),
+              const Icon(Icons.verified, color: Colors.green),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text("${foodData['food_name']}", style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 20),
+          // 核心热量展示
+          Row(
+            children:[
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(color: Colors.orange.shade50, shape: BoxShape.circle),
+                child: Text("${foodData['calories']}", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.orange.shade800)),
+              ),
+              const SizedBox(width: 20),
+              const Text("Kcal\nEstimated", style: TextStyle(fontSize: 16, color: Colors.grey)),
+            ],
+          ),
+          const SizedBox(height: 30),
+          // 营养素横条展示
+          _bottomSheetNutrientBar("Protein", (foodData['protein'] / 100).clamp(0.0, 1.0), Colors.green, "${foodData['protein']}g"),
+          _bottomSheetNutrientBar("Carbs", (foodData['carbs'] / 100).clamp(0.0, 1.0), Colors.orange, "${foodData['carbs']}g"),
+          _bottomSheetNutrientBar("Fat", (foodData['fat'] / 100).clamp(0.0, 1.0), Colors.yellow.shade700, "${foodData['fat']}g"),
+          const Spacer(),
+          // 确认保存按钮
+          SizedBox(
+            width: double.infinity,
+            height: 55,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+              onPressed: () {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Meal Logged Successfully!")));
+              },
+              child: const Text("Log this Meal", style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 弹窗专用的精美营养条
+  Widget _bottomSheetNutrientBar(String label, double percent, Color color, String valueStr) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children:[
+          SizedBox(width: 60, child: Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500))),
+          Expanded(
+            child: LinearProgressIndicator(value: percent, backgroundColor: Colors.grey.shade200, color: color, minHeight: 8, borderRadius: BorderRadius.circular(10)),
+          ),
+          const SizedBox(width: 15),
+          SizedBox(width: 50, child: Text(valueStr, style: const TextStyle(fontWeight: FontWeight.bold), textAlign: TextAlign.right)),
+        ],
+      ),
+    );
+  }
 }
+
+// ---------------- 以下为仪表盘与绘图组件 (保持不变) ----------------
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -133,7 +237,7 @@ class DashboardScreen extends StatelessWidget {
 
     return SingleChildScrollView(
       child: Column(
-        children: [
+        children:[
           const SizedBox(height: 60),
           TableCalendar(
             focusedDay: DateTime.now(),
@@ -155,7 +259,7 @@ class DashboardScreen extends StatelessWidget {
               child: Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
+                  children:[
                     const Text("828", style: TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: Color(0xFF2E3E2E))),
                     Text("Kcal Left", style: TextStyle(fontSize: 16, color: Colors.grey.shade600)),
                   ],
@@ -168,7 +272,7 @@ class DashboardScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
+              children:[
                 _sensorCard(context, "Ambient Noise", "${sensorProvider.decibel.toStringAsFixed(1)} dB", Icons.graphic_eq, Colors.orange),
                 _sensorCard(context, "Spatial Context", sensorProvider.location, Icons.location_on, Colors.blue),
               ],
@@ -190,10 +294,10 @@ class DashboardScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: [BoxShadow(color: Colors.black.withAlpha(10), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow:[BoxShadow(color: Colors.black.withAlpha(10), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
-        children: [
+        children:[
           Icon(icon, color: color, size: 28),
           const SizedBox(height: 8),
           Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
@@ -208,7 +312,7 @@ class DashboardScreen extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+        children:[
           Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
           const SizedBox(height: 4),
           LinearProgressIndicator(value: percent, backgroundColor: Colors.grey.shade200, color: color, minHeight: 8, borderRadius: BorderRadius.circular(10)),
@@ -234,7 +338,7 @@ class CaloriePainter extends CustomPainter {
     final rect = Rect.fromCircle(center: center, radius: radius);
     final progressPaint = Paint()
       ..shader = const SweepGradient(
-        colors: [Colors.greenAccent, Colors.green, Colors.greenAccent],
+        colors:[Colors.greenAccent, Colors.green, Colors.greenAccent],
         stops: [0.0, 0.5, 1.0],
       ).createShader(rect)
       ..style = PaintingStyle.stroke

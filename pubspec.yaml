@@ -19,22 +19,24 @@ dependencies:
   permission_handler: ^11.3.1
 
   # 2. 传感器与物理环境 (Connected Environment 核心分数)
-  geolocator: ^13.0.1          # GPS 定位
-  noise_meter: ^5.0.0         # 麦克风分贝监测
-  light_sensor: ^3.0.2        # 光敏传感器 (部分模拟器不支持，但代码要写)
+  geolocator: ^13.0.1           # GPS 定位
+  noise_meter: ^5.0.0           # 麦克风分贝监测
+  light_sensor: ^3.0.2          # 光敏传感器 (部分模拟器不支持，但代码要写)
 
   # 3. 外部服务与 AI (API 集成 15% 分数)
   google_generative_ai: ^0.4.5  # Google Gemini AI 识图逻辑
   firebase_core: ^3.1.1         # Firebase 核心
   cloud_firestore: ^5.0.2       # Firestore 云数据库 (存历史记录)
-  firebase_auth: ^5.1.1          # 账号密码登录
+  firebase_auth: ^5.1.1         # 账号密码登录
 
   # 4. 高级 UI 与 数据记录 (30% 组件分数)
   fl_chart: ^0.69.0             # 漂亮的统计图表
   table_calendar: ^3.1.2        # 带日历的饮食记录条
   google_maps_flutter: ^2.7.0   # 众包地图展示
+  image_picker: ^1.1.2          # 相机与图片选择
 
-  image_picker: ^1.1.2
+  # 5. 安全与环境变量 (用于隐藏 API Key，极大的加分项)
+  flutter_dotenv: ^5.2.1
 
 dev_dependencies:
   flutter_test:
@@ -44,7 +46,6 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-
-  # 如果你后面需要加入自己的图标或图片，在这里配置 assets:
-  # assets:
-  #   - assets/images/
+  # 注册 .env 文件，确保 App 在运行时能够读取到你的隐藏密钥
+  assets:
+    - .env

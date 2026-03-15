@@ -1,20 +1,23 @@
 import 'dart:io';
 import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class AIService {
-  // 注意：这个 API Key 在生产环境下应当通过环境变量或安全存储获取
-  static const String _apiKey = 'AIzaSyDl4jm53lXeJ6Ok1v1P4yzlxpbNPPyqH14';
-
   static Future<String?> analyzeFood(File imageFile) async {
-    if (_apiKey.isEmpty || _apiKey.startsWith('YOUR')) {
-      debugPrint("Error: 请先在 AIService 中填入有效的 Gemini API Key");
+    // 从 .env 文件中动态读取 Key
+    final apiKey = dotenv.env['GEMINI_API_KEY'];
+
+    if (apiKey == null || apiKey.isEmpty) {
+      debugPrint("Error: API Key is missing in .env file");
       return null;
     }
 
     try {
-
-      final model = GenerativeModel(model: 'gemini-2.5-flash', apiKey: _apiKey);
+      final model = GenerativeModel(
+        model: 'gemini-2.5-flash',
+        apiKey: apiKey,
+      );
 
       final imageBytes = await imageFile.readAsBytes();
 
