@@ -1,27 +1,28 @@
 import 'dart:io';
-import 'dart:convert'; // 用于解析 AI 返回的 JSON 数据
+import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart'; // 引入环境变量保险箱
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'providers/sensor_provider.dart';
 import 'service/ai_service.dart';
+import 'screens/login_screen.dart';
+import 'screens/settings_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. 加载安全环境变量 (.env)
   try {
     await dotenv.load(fileName: ".env");
   } catch (e) {
     debugPrint("环境变量加载失败，请检查是否创建了 .env 文件: $e");
   }
 
-  // 2. 初始化 Firebase
   try {
     await Firebase.initializeApp();
   } catch (e) {
@@ -30,7 +31,7 @@ Future<void> main() async {
 
   runApp(
     MultiProvider(
-      providers:[
+      providers: [
         ChangeNotifierProvider(create: (_) => SensorProvider()),
       ],
       child: const SenseFoodApp(),
@@ -50,7 +51,18 @@ class SenseFoodApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
         useMaterial3: true,
       ),
-      home: const MainNavigationScreen(),
+      home: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(body: Center(child: CircularProgressIndicator(color: Colors.green)));
+          }
+          if (snapshot.hasData) {
+            return const MainNavigationScreen();
+          }
+          return const LoginScreen();
+        },
+      ),
     );
   }
 }
@@ -65,6 +77,49 @@ class MainNavigationScreen extends StatefulWidget {
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _selectedIndex = 0;
 
+  // 独立的图像处理和 AI 调用逻辑
+  Future<void> _processImage(ImageSource source) async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? photo = await picker.pickImage(source: source);
+
+    if (photo != null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("AI is analyzing your food... ⏳"),
+          duration: Duration(seconds: 3),
+        ),
+      );
+
+      File imageFile = File(photo.path);
+      final result = await AIService.analyzeFood(imageFile);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+      if (result != null) {
+        try {
+          String cleanJson = result.replaceAll('```json', '').replaceAll('```', '').trim();
+          final foodData = jsonDecode(cleanJson);
+
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (context) {
+              return _buildResultBottomSheet(context, foodData);
+            },
+          );
+        } catch (e) {
+          debugPrint("JSON Parse Error: $e\nRaw data: $result");
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Analysis format error, please try again. ❌")));
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Analysis Failed. Check API Key or Network ❌")));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -75,53 +130,40 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           DashboardScreen(),
           Center(child: Text("Connected Map")),
           Center(child: Text("Forum")),
-          Center(child: Text("Settings")),
+          SettingsScreen(),
         ],
       ),
-      // 核心交互：AI 拍照与炫酷结果弹窗
       floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final ImagePicker picker = ImagePicker();
-          final XFile? photo = await picker.pickImage(source: ImageSource.camera);
-
-          if (photo != null) {
-            if (!context.mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("AI is analyzing your food... ⏳"),
-                duration: Duration(seconds: 3),
-              ),
-            );
-
-            File imageFile = File(photo.path);
-            final result = await AIService.analyzeFood(imageFile);
-
-            if (!context.mounted) return;
-            ScaffoldMessenger.of(context).hideCurrentSnackBar(); // 隐藏加载提示
-
-            if (result != null) {
-              try {
-                // 清洗并解析 JSON
-                String cleanJson = result.replaceAll('```json', '').replaceAll('```', '').trim();
-                final foodData = jsonDecode(cleanJson);
-
-                // 冲刺高分交互：从底部弹出一个精美的识别结果卡片
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (context) {
-                    return _buildResultBottomSheet(context, foodData);
-                  },
-                );
-              } catch (e) {
-                debugPrint("JSON Parse Error: $e\nRaw data: $result");
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Analysis format error, please try again. ❌")));
-              }
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Analysis Failed. Check API Key or Network ❌")));
-            }
-          }
+        onPressed: () {
+          // 弹出选择框，允许从相册选择照片
+          showModalBottomSheet(
+            context: context,
+            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+            builder: (BuildContext ctx) {
+              return SafeArea(
+                child: Wrap(
+                  children:[
+                    ListTile(
+                      leading: const Icon(Icons.camera_alt, color: Colors.green),
+                      title: const Text('Take a Photo'),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _processImage(ImageSource.camera);
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.photo_library, color: Colors.blue),
+                      title: const Text('Choose from Gallery'),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _processImage(ImageSource.gallery);
+                      },
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
         },
         backgroundColor: Colors.green,
         shape: const CircleBorder(),
@@ -135,18 +177,17 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children:[
-            IconButton(icon: const Icon(Icons.calendar_today), onPressed: () => setState(() => _selectedIndex = 0)),
-            IconButton(icon: const Icon(Icons.map_outlined), onPressed: () => setState(() => _selectedIndex = 1)),
+            IconButton(icon: Icon(Icons.calendar_today, color: _selectedIndex == 0 ? Colors.green : Colors.grey), onPressed: () => setState(() => _selectedIndex = 0)),
+            IconButton(icon: Icon(Icons.map_outlined, color: _selectedIndex == 1 ? Colors.green : Colors.grey), onPressed: () => setState(() => _selectedIndex = 1)),
             const SizedBox(width: 40),
-            IconButton(icon: const Icon(Icons.people_outline), onPressed: () => setState(() => _selectedIndex = 2)),
-            IconButton(icon: const Icon(Icons.settings_outlined), onPressed: () => setState(() => _selectedIndex = 3)),
+            IconButton(icon: Icon(Icons.people_outline, color: _selectedIndex == 2 ? Colors.green : Colors.grey), onPressed: () => setState(() => _selectedIndex = 2)),
+            IconButton(icon: Icon(Icons.settings_outlined, color: _selectedIndex == 3 ? Colors.green : Colors.grey), onPressed: () => setState(() => _selectedIndex = 3)),
           ],
         ),
       ),
     );
   }
 
-  // 炫酷的底部营养卡片 UI (完美复刻你截图的风格)
   Widget _buildResultBottomSheet(BuildContext context, Map<String, dynamic> foodData) {
     return Container(
       height: MediaQuery.of(context).size.height * 0.65,
@@ -172,7 +213,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           const SizedBox(height: 10),
           Text("${foodData['food_name']}", style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
           const SizedBox(height: 20),
-          // 核心热量展示
           Row(
             children:[
               Container(
@@ -185,12 +225,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             ],
           ),
           const SizedBox(height: 30),
-          // 营养素横条展示
           _bottomSheetNutrientBar("Protein", (foodData['protein'] / 100).clamp(0.0, 1.0), Colors.green, "${foodData['protein']}g"),
           _bottomSheetNutrientBar("Carbs", (foodData['carbs'] / 100).clamp(0.0, 1.0), Colors.orange, "${foodData['carbs']}g"),
           _bottomSheetNutrientBar("Fat", (foodData['fat'] / 100).clamp(0.0, 1.0), Colors.yellow.shade700, "${foodData['fat']}g"),
           const Spacer(),
-          // 确认保存按钮
           SizedBox(
             width: double.infinity,
             height: 55,
@@ -198,6 +236,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
               onPressed: () {
                 Navigator.pop(context);
+                // 核心连接：记录这顿饭的热量，更新全局状态！
+                context.read<SensorProvider>().logMeal(foodData['calories'] as int);
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Meal Logged Successfully!")));
               },
               child: const Text("Log this Meal", style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
@@ -208,7 +248,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
-  // 弹窗专用的精美营养条
   Widget _bottomSheetNutrientBar(String label, double percent, Color color, String valueStr) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -225,8 +264,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 }
-
-// ---------------- 以下为仪表盘与绘图组件 (保持不变) ----------------
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -255,12 +292,13 @@ class DashboardScreen extends StatelessWidget {
             height: 240,
             width: 240,
             child: CustomPaint(
-              painter: CaloriePainter(current: 828, total: 2000),
+              // 核心连接：将原本写死的 828 换成了动态剩余热量！
+              painter: CaloriePainter(current: sensorProvider.remainingCalories.toDouble(), total: sensorProvider.totalCaloriesTarget.toDouble()),
               child: Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children:[
-                    const Text("828", style: TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: Color(0xFF2E3E2E))),
+                    Text("${sensorProvider.remainingCalories}", style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: Color(0xFF2E3E2E))),
                     Text("Kcal Left", style: TextStyle(fontSize: 16, color: Colors.grey.shade600)),
                   ],
                 ),
@@ -338,7 +376,7 @@ class CaloriePainter extends CustomPainter {
     final rect = Rect.fromCircle(center: center, radius: radius);
     final progressPaint = Paint()
       ..shader = const SweepGradient(
-        colors:[Colors.greenAccent, Colors.green, Colors.greenAccent],
+        colors: [Colors.greenAccent, Colors.green, Colors.greenAccent],
         stops: [0.0, 0.5, 1.0],
       ).createShader(rect)
       ..style = PaintingStyle.stroke

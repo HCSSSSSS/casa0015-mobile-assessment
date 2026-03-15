@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "283830669348",
+    "project_id": "gen-lang-client-0591421217",
+    "storage_bucket": "gen-lang-client-0591421217.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:283830669348:android:f827c458567adf044348b1",
+        "android_client_info": {
+          "package_name": "com.hcs.sense_food"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCgZnf1D4UTot98cf5lk2VWkQM5PoJAyz4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
