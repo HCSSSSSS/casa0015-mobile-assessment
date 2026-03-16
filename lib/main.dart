@@ -8,7 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-
+import 'service/database_service.dart';
 import 'providers/sensor_provider.dart';
 import 'service/ai_service.dart';
 import 'screens/login_screen.dart';
@@ -77,7 +77,6 @@ class MainNavigationScreen extends StatefulWidget {
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _selectedIndex = 0;
 
-  // 独立的图像处理和 AI 调用逻辑
   Future<void> _processImage(ImageSource source) async {
     final ImagePicker picker = ImagePicker();
     final XFile? photo = await picker.pickImage(source: source);
@@ -135,7 +134,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          // 弹出选择框，允许从相册选择照片
           showModalBottomSheet(
             context: context,
             shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
@@ -234,11 +232,30 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             height: 55,
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
-              onPressed: () {
+              onPressed: () async {
                 Navigator.pop(context);
-                // 核心连接：记录这顿饭的热量，更新全局状态！
-                context.read<SensorProvider>().logMeal(foodData['calories'] as int);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Meal Logged Successfully!")));
+                final sensorProvider = context.read<SensorProvider>();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Saving meal to cloud... ☁️")),
+                );
+                bool success = await DatabaseService.saveMealToCloud(
+                  foodData: foodData,
+                  decibel: sensorProvider.decibel,
+                  location: sensorProvider.location,
+                );
+                if (success) {
+                  sensorProvider.logMeal(foodData['calories'] as int);
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Meal Logged Successfully! ✅")),
+                  );
+                } else {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Failed to log meal. Please try again. ❌")),
+                  );
+                }
               },
               child: const Text("Log this Meal", style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
             ),
@@ -292,7 +309,6 @@ class DashboardScreen extends StatelessWidget {
             height: 240,
             width: 240,
             child: CustomPaint(
-              // 核心连接：将原本写死的 828 换成了动态剩余热量！
               painter: CaloriePainter(current: sensorProvider.remainingCalories.toDouble(), total: sensorProvider.totalCaloriesTarget.toDouble()),
               child: Center(
                 child: Column(
