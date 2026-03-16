@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // 新增：用于发帖到公共论坛
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'package:provider/provider.dart';
@@ -17,7 +17,7 @@ import 'service/database_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/map_screen.dart';
-import 'screens/forum_screen.dart'; // 引入我们新写的社区论坛
+import 'screens/forum_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -100,6 +100,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       File imageFile = File(photo.path);
       final result = await AIService.analyzeFood(imageFile);
 
+      // 安全检查 1: AI 分析之后
       if (!mounted) return;
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
@@ -142,7 +143,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         children: const [
           DashboardScreen(),
           MapScreen(),
-          ForumScreen(),    // 核心修改：已替换为真实的“环境美食论坛”页面
+          ForumScreen(),
           SettingsScreen(),
         ],
       ),
@@ -216,7 +217,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   Widget _buildResultBottomSheet(BuildContext context, Map<String, dynamic> foodData) {
     return Container(
-      height: MediaQuery.of(context).size.height * 0.70, // 稍微增高以容纳新按钮
+      height: MediaQuery.of(context).size.height * 0.70,
       padding: const EdgeInsets.all(24),
       decoration: const BoxDecoration(
         color: Colors.white,
@@ -256,12 +257,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             ],
           ),
           const SizedBox(height: 30),
-          _bottomSheetNutrientBar("Protein", (foodData['protein'] / 100).clamp(0.0, 1.0), Colors.green, "${foodData['protein']}g"),
-          _bottomSheetNutrientBar("Carbs", (foodData['carbs'] / 100).clamp(0.0, 1.0), Colors.orange, "${foodData['carbs']}g"),
-          _bottomSheetNutrientBar("Fat", (foodData['fat'] / 100).clamp(0.0, 1.0), Colors.yellow.shade700, "${foodData['fat']}g"),
+          _bottomSheetNutrientBar("Protein", (foodData['protein'] / 100).toDouble().clamp(0.0, 1.0), Colors.green, "${foodData['protein']}g"),
+          _bottomSheetNutrientBar("Carbs", (foodData['carbs'] / 100).toDouble().clamp(0.0, 1.0), Colors.orange, "${foodData['carbs']}g"),
+          _bottomSheetNutrientBar("Fat", (foodData['fat'] / 100).toDouble().clamp(0.0, 1.0), Colors.yellow.shade700, "${foodData['fat']}g"),
           const Spacer(),
 
-          // 核心修改：双按钮（只记录给自己 / 记录并分享到社区）
           Row(
             children: [
               Expanded(
@@ -294,22 +294,22 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
-  // 独立的记录功能（包含分享到社区的逻辑）
   Future<void> _handleLogMeal(BuildContext context, Map<String, dynamic> foodData, {required bool shareToForum}) async {
     Navigator.pop(context);
     final sensorProvider = context.read<SensorProvider>();
+    final messenger = ScaffoldMessenger.of(context);
 
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Saving meal to cloud... ☁️")));
+    messenger.showSnackBar(const SnackBar(content: Text("Saving meal to cloud... ☁️")));
 
-    // 1. 保存到个人日记
     bool success = await DatabaseService.saveMealToCloud(
       foodData: foodData,
       decibel: sensorProvider.decibel,
       location: sensorProvider.location,
     );
 
+    if (!mounted) return;
+
     if (success) {
-      // 2. 如果用户选择了分享，同时发布到 public_posts 集合
       if (shareToForum) {
         final user = FirebaseAuth.instance.currentUser;
         await FirebaseFirestore.instance.collection('public_posts').add({
@@ -323,14 +323,13 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
       sensorProvider.refreshDataForDate(DateTime.now());
 
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
+      if (!mounted) return;
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
         SnackBar(content: Text(shareToForum ? "Logged and Shared to Community! 🌍" : "Meal Logged Successfully! ✅")),
       );
     } else {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to log meal. Please try again. ❌")));
+      messenger.showSnackBar(const SnackBar(content: Text("Failed to log meal. Please try again. ❌")));
     }
   }
 
@@ -351,8 +350,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 }
 
-// ---------------- 以下为仪表盘与绘图组件 (保持不变) ----------------
-
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -368,7 +365,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<SensorProvider>().refreshDataForDate(_selectedDay);
+      if (mounted) {
+        context.read<SensorProvider>().refreshDataForDate(_selectedDay);
+      }
     });
   }
 
@@ -396,9 +395,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               });
               context.read<SensorProvider>().refreshDataForDate(selectedDay);
             },
-            calendarStyle: CalendarStyle(
-              selectedDecoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle),
-              todayDecoration: BoxDecoration(color: Colors.green.withAlpha(50), shape: BoxShape.circle),
+            calendarStyle: const CalendarStyle(
+              selectedDecoration: BoxDecoration(color: Colors.green, shape: BoxShape.circle),
+              todayDecoration: BoxDecoration(color: Color(0x334CAF50), shape: BoxShape.circle),
             ),
           ),
           const SizedBox(height: 30),
