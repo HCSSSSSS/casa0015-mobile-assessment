@@ -1,95 +1,87 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-class SettingsScreen extends StatefulWidget {
+class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
-
-  @override
-  State<SettingsScreen> createState() => _SettingsScreenState();
-}
-
-class _SettingsScreenState extends State<SettingsScreen> {
-  bool _enableNoiseSensing = true;
-  bool _enableLocation = true;
 
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FBF8),
-      appBar: AppBar(
-        title: const Text("Settings", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        centerTitle: true,
+      backgroundColor: const Color(0xFFF4F6F4),
+      appBar: AppBar(title: const Text("Settings", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)), backgroundColor: Colors.transparent, elevation: 0),
+      body: FutureBuilder<DocumentSnapshot>(
+        future: FirebaseFirestore.instance.collection('users').doc(user?.uid).get(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          final data = snapshot.data!.data() as Map<String, dynamic>? ?? {};
+
+          return ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            children: [
+              _buildSectionHeader("Account"),
+              _buildSettingCard([
+                _buildSettingRow(Icons.person, Colors.blue, "Display Name", value: data['name'] ?? "Not set"),
+                _buildSettingRow(Icons.wc, Colors.pinkAccent, "Gender", value: data['gender'] ?? "Not set"),
+                _buildSettingRow(Icons.cake, Colors.yellow.shade700, "Age", value: "${data['age'] ?? '-'} years"),
+              ]),
+
+              const SizedBox(height: 20),
+              _buildSectionHeader("Body & Goals"),
+              _buildSettingCard([
+                _buildSettingRow(Icons.monitor_weight, Colors.teal, "Weight", value: "${data['weight'] ?? '-'} kg"),
+                _buildSettingRow(Icons.local_fire_department, Colors.orange, "Daily Goal", value: "${data['target_calories'] ?? '2000'} Kcal"),
+              ]),
+
+              const SizedBox(height: 20),
+              _buildSectionHeader("System"),
+              _buildSettingCard([
+                _buildSettingRow(Icons.graphic_eq, Colors.purple, "Ambient Sensing", isToggle: true),
+                _buildSettingRow(Icons.location_on, Colors.blueAccent, "Location Tagging", isToggle: true),
+              ]),
+
+              const SizedBox(height: 40),
+              SizedBox(
+                height: 55,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.red, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+                  onPressed: () => FirebaseAuth.instance.signOut(),
+                  child: const Text("Log Out", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                ),
+              ),
+              const SizedBox(height: 40),
+            ],
+          );
+        },
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children:[
-          // 用户资料卡片
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withAlpha(10), blurRadius: 10)]),
-            child: Row(
-              children:[
-                CircleAvatar(radius: 30, backgroundColor: Colors.green.shade100, child: const Icon(Icons.person, size: 35, color: Colors.green)),
-                const SizedBox(width: 15),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children:[
-                      const Text("Logged in as", style: TextStyle(fontSize: 12, color: Colors.grey)),
-                      Text(user?.email ?? "Unknown User", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 30),
+    );
+  }
 
-          // 传感器开关控制 (贴合 Connected Environment 主题)
-          const Text("SENSORS & PRIVACY", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)),
-          const SizedBox(height: 10),
-          Container(
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-            child: Column(
-              children:[
-                SwitchListTile(
-                  activeThumbColor: Colors.green,
-                  title: const Text("Ambient Noise Sensing"),
-                  subtitle: const Text("Used to evaluate dining stress"),
-                  value: _enableNoiseSensing,
-                  onChanged: (val) => setState(() => _enableNoiseSensing = val),
-                ),
-                const Divider(height: 1),
-                SwitchListTile(
-                  activeThumbColor: Colors.green,
-                  title: const Text("Location Mapping"),
-                  subtitle: const Text("Tag meals to spatial context"),
-                  value: _enableLocation,
-                  onChanged: (val) => setState(() => _enableLocation = val),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 40),
+  Widget _buildSectionHeader(String title) {
+    return Padding(padding: const EdgeInsets.only(left: 8, bottom: 8), child: Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey)));
+  }
 
-          // 退出登录按钮
-          SizedBox(
-            width: double.infinity,
-            height: 55,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade50, foregroundColor: Colors.red, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
-              icon: const Icon(Icons.logout),
-              label: const Text("Sign Out", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              onPressed: () async {
-                await FirebaseAuth.instance.signOut();
-                // 退出后监听器会自动跳回登录页
-              },
-            ),
-          ),
+  Widget _buildSettingCard(List<Widget> rows) {
+    return Container(
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+      child: Column(children: rows),
+    );
+  }
+
+  Widget _buildSettingRow(IconData icon, Color iconColor, String title, {String? value, bool isToggle = false}) {
+    return ListTile(
+      leading: Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: iconColor.withAlpha(30), borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: iconColor, size: 20)),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500)),
+      trailing: isToggle
+          ? Switch(value: true, activeColor: Colors.green, onChanged: (v){})
+          : Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (value != null) Text(value, style: const TextStyle(color: Colors.grey, fontSize: 14)),
+          const SizedBox(width: 8),
+          const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
         ],
       ),
     );

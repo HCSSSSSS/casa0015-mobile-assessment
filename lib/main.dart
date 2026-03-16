@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // 新增：用于发帖到公共论坛
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import 'package:provider/provider.dart';
@@ -12,21 +13,21 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'providers/sensor_provider.dart';
 import 'service/ai_service.dart';
 import 'service/database_service.dart';
+
 import 'screens/login_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/map_screen.dart';
+import 'screens/forum_screen.dart'; // 引入我们新写的社区论坛
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. 加载安全环境变量 (.env)
   try {
     await dotenv.load(fileName: ".env");
   } catch (e) {
     debugPrint("环境变量加载失败，请检查是否创建了 .env 文件: $e");
   }
 
-  // 2. 初始化 Firebase
   try {
     await Firebase.initializeApp();
   } catch (e) {
@@ -35,9 +36,7 @@ Future<void> main() async {
 
   runApp(
     MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => SensorProvider()),
-      ],
+      providers: [ChangeNotifierProvider(create: (_) => SensorProvider())],
       child: const SenseFoodApp(),
     ),
   );
@@ -59,7 +58,11 @@ class SenseFoodApp extends StatelessWidget {
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Scaffold(body: Center(child: CircularProgressIndicator(color: Colors.green)));
+            return const Scaffold(
+              body: Center(
+                child: CircularProgressIndicator(color: Colors.green),
+              ),
+            );
           }
           if (snapshot.hasData) {
             return const MainNavigationScreen();
@@ -102,7 +105,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
       if (result != null) {
         try {
-          String cleanJson = result.replaceAll('```json', '').replaceAll('```', '').trim();
+          String cleanJson = result
+              .replaceAll('```json', '')
+              .replaceAll('```', '')
+              .trim();
           final foodData = jsonDecode(cleanJson);
 
           showModalBottomSheet(
@@ -115,10 +121,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           );
         } catch (e) {
           debugPrint("JSON Parse Error: $e\nRaw data: $result");
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Analysis format error, please try again. ❌")));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Analysis format error, please try again. ❌")),
+          );
         }
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Analysis Failed. Check API Key or Network ❌")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Analysis Failed. Check API Key or Network ❌")),
+        );
       }
     }
   }
@@ -131,8 +141,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         index: _selectedIndex,
         children: const [
           DashboardScreen(),
-          MapScreen(), // 核心修改：已替换为真实地图页面
-          Center(child: Text("Forum")),
+          MapScreen(),
+          ForumScreen(),    // 核心修改：已替换为真实的“环境美食论坛”页面
           SettingsScreen(),
         ],
       ),
@@ -140,7 +150,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         onPressed: () {
           showModalBottomSheet(
             context: context,
-            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
             builder: (BuildContext ctx) {
               return SafeArea(
                 child: Wrap(
@@ -179,11 +191,23 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            IconButton(icon: Icon(Icons.calendar_today, color: _selectedIndex == 0 ? Colors.green : Colors.grey), onPressed: () => setState(() => _selectedIndex = 0)),
-            IconButton(icon: Icon(Icons.map_outlined, color: _selectedIndex == 1 ? Colors.green : Colors.grey), onPressed: () => setState(() => _selectedIndex = 1)),
+            IconButton(
+              icon: Icon(Icons.calendar_today, color: _selectedIndex == 0 ? Colors.green : Colors.grey),
+              onPressed: () => setState(() => _selectedIndex = 0),
+            ),
+            IconButton(
+              icon: Icon(Icons.map_outlined, color: _selectedIndex == 1 ? Colors.green : Colors.grey),
+              onPressed: () => setState(() => _selectedIndex = 1),
+            ),
             const SizedBox(width: 40),
-            IconButton(icon: Icon(Icons.people_outline, color: _selectedIndex == 2 ? Colors.green : Colors.grey), onPressed: () => setState(() => _selectedIndex = 2)),
-            IconButton(icon: Icon(Icons.settings_outlined, color: _selectedIndex == 3 ? Colors.green : Colors.grey), onPressed: () => setState(() => _selectedIndex = 3)),
+            IconButton(
+              icon: Icon(Icons.people_outline, color: _selectedIndex == 2 ? Colors.green : Colors.grey),
+              onPressed: () => setState(() => _selectedIndex = 2),
+            ),
+            IconButton(
+              icon: Icon(Icons.settings_outlined, color: _selectedIndex == 3 ? Colors.green : Colors.grey),
+              onPressed: () => setState(() => _selectedIndex = 3),
+            ),
           ],
         ),
       ),
@@ -192,7 +216,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   Widget _buildResultBottomSheet(BuildContext context, Map<String, dynamic> foodData) {
     return Container(
-      height: MediaQuery.of(context).size.height * 0.65,
+      height: MediaQuery.of(context).size.height * 0.70, // 稍微增高以容纳新按钮
       padding: const EdgeInsets.all(24),
       decoration: const BoxDecoration(
         color: Colors.white,
@@ -213,7 +237,12 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             ],
           ),
           const SizedBox(height: 10),
-          Text("${foodData['food_name']}", style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+          Text(
+            "${foodData['food_name']}",
+            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
           const SizedBox(height: 20),
           Row(
             children: [
@@ -231,45 +260,78 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           _bottomSheetNutrientBar("Carbs", (foodData['carbs'] / 100).clamp(0.0, 1.0), Colors.orange, "${foodData['carbs']}g"),
           _bottomSheetNutrientBar("Fat", (foodData['fat'] / 100).clamp(0.0, 1.0), Colors.yellow.shade700, "${foodData['fat']}g"),
           const Spacer(),
-          SizedBox(
-            width: double.infinity,
-            height: 55,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
-              onPressed: () async {
-                Navigator.pop(context);
-                final sensorProvider = context.read<SensorProvider>();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Saving meal to cloud... ☁️")),
-                );
 
-                bool success = await DatabaseService.saveMealToCloud(
-                  foodData: foodData,
-                  decibel: sensorProvider.decibel,
-                  location: sensorProvider.location,
-                );
-
-                if (success) {
-                  sensorProvider.refreshDataForDate(DateTime.now());
-
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Meal Logged Successfully! ✅")),
-                  );
-                } else {
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Failed to log meal. Please try again. ❌")),
-                  );
-                }
-              },
-              child: const Text("Log this Meal", style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
+          // 核心修改：双按钮（只记录给自己 / 记录并分享到社区）
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.green, width: 2),
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  ),
+                  onPressed: () async => _handleLogMeal(context, foodData, shareToForum: false),
+                  child: const Text("Just Log", style: TextStyle(fontSize: 16, color: Colors.green, fontWeight: FontWeight.bold)),
+                ),
+              ),
+              const SizedBox(width: 15),
+              Expanded(
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                  ),
+                  onPressed: () async => _handleLogMeal(context, foodData, shareToForum: true),
+                  child: const Text("Log & Share", style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
+  }
+
+  // 独立的记录功能（包含分享到社区的逻辑）
+  Future<void> _handleLogMeal(BuildContext context, Map<String, dynamic> foodData, {required bool shareToForum}) async {
+    Navigator.pop(context);
+    final sensorProvider = context.read<SensorProvider>();
+
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Saving meal to cloud... ☁️")));
+
+    // 1. 保存到个人日记
+    bool success = await DatabaseService.saveMealToCloud(
+      foodData: foodData,
+      decibel: sensorProvider.decibel,
+      location: sensorProvider.location,
+    );
+
+    if (success) {
+      // 2. 如果用户选择了分享，同时发布到 public_posts 集合
+      if (shareToForum) {
+        final user = FirebaseAuth.instance.currentUser;
+        await FirebaseFirestore.instance.collection('public_posts').add({
+          'food_name': foodData['food_name'],
+          'calories': foodData['calories'],
+          'decibel': sensorProvider.decibel.toStringAsFixed(1),
+          'author_name': user?.email?.split('@')[0] ?? 'Explorer',
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+      }
+
+      sensorProvider.refreshDataForDate(DateTime.now());
+
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(shareToForum ? "Logged and Shared to Community! 🌍" : "Meal Logged Successfully! ✅")),
+      );
+    } else {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Failed to log meal. Please try again. ❌")));
+    }
   }
 
   Widget _bottomSheetNutrientBar(String label, double percent, Color color, String valueStr) {
@@ -288,6 +350,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 }
+
+// ---------------- 以下为仪表盘与绘图组件 (保持不变) ----------------
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -342,12 +406,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
             height: 240,
             width: 240,
             child: CustomPaint(
-              painter: CaloriePainter(current: sensorProvider.remainingCalories.toDouble(), total: sensorProvider.totalCaloriesTarget.toDouble()),
+              painter: CaloriePainter(
+                current: sensorProvider.remainingCalories.toDouble(),
+                total: sensorProvider.totalCaloriesTarget.toDouble(),
+              ),
               child: Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text("${sensorProvider.remainingCalories}", style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: Color(0xFF2E3E2E))),
+                    Text(
+                      "${sensorProvider.remainingCalories}",
+                      style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: Color(0xFF2E3E2E)),
+                    ),
                     Text("Kcal Left", style: TextStyle(fontSize: 16, color: Colors.grey.shade600)),
                   ],
                 ),
@@ -412,6 +482,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 class CaloriePainter extends CustomPainter {
   final double current;
   final double total;
+
   CaloriePainter({required this.current, required this.total});
 
   @override
@@ -419,7 +490,10 @@ class CaloriePainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2;
 
-    final bgPaint = Paint()..color = Colors.grey.shade100..style = PaintingStyle.stroke..strokeWidth = 16;
+    final bgPaint = Paint()
+      ..color = Colors.grey.shade100
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 16;
     canvas.drawCircle(center, radius, bgPaint);
 
     final rect = Rect.fromCircle(center: center, radius: radius);
