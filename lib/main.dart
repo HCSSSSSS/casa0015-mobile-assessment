@@ -9,11 +9,12 @@ import 'package:table_calendar/table_calendar.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-import 'service/database_service.dart';
 import 'providers/sensor_provider.dart';
 import 'service/ai_service.dart';
+import 'service/database_service.dart';
 import 'screens/login_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/map_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -129,8 +130,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       body: IndexedStack(
         index: _selectedIndex,
         children: const [
-          DashboardScreen(), // 现在的 Dashboard 拥有了 Stateful 的日历
-          Center(child: Text("Connected Map")),
+          DashboardScreen(),
+          MapScreen(), // 核心修改：已替换为真实地图页面
           Center(child: Text("Forum")),
           SettingsScreen(),
         ],
@@ -242,7 +243,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   const SnackBar(content: Text("Saving meal to cloud... ☁️")),
                 );
 
-                // 核心：保存数据到云端
                 bool success = await DatabaseService.saveMealToCloud(
                   foodData: foodData,
                   decibel: sensorProvider.decibel,
@@ -250,7 +250,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 );
 
                 if (success) {
-                  // 云端保存成功后，强制刷新今天的数据 (UI 会实时看到圆环跳动)
                   sensorProvider.refreshDataForDate(DateTime.now());
 
                   if (!context.mounted) return;
@@ -290,8 +289,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 }
 
-// ---------------- 仪表盘与交互式日历组件 ----------------
-
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -306,7 +303,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    // 页面加载时自动从云端获取今天的数据
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<SensorProvider>().refreshDataForDate(_selectedDay);
     });
@@ -320,14 +316,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Column(
         children: [
           const SizedBox(height: 60),
-          // 真正的交互式日历
           TableCalendar(
             focusedDay: _focusedDay,
             firstDay: DateTime.utc(2024, 1, 1),
             lastDay: DateTime.utc(2030, 12, 31),
             calendarFormat: CalendarFormat.week,
             headerVisible: false,
-            // 核心逻辑：处理点击事件
             selectedDayPredicate: (day) {
               return isSameDay(_selectedDay, day);
             },
@@ -336,7 +330,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 _selectedDay = selectedDay;
                 _focusedDay = focusedDay;
               });
-              // 触发云端查询，圆环会根据选中的日期立刻更新！
               context.read<SensorProvider>().refreshDataForDate(selectedDay);
             },
             calendarStyle: CalendarStyle(
@@ -349,7 +342,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             height: 240,
             width: 240,
             child: CustomPaint(
-              // 圆环使用云端的动态数据
               painter: CaloriePainter(current: sensorProvider.remainingCalories.toDouble(), total: sensorProvider.totalCaloriesTarget.toDouble()),
               child: Center(
                 child: Column(
