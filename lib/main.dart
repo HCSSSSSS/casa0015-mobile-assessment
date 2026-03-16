@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 import 'service/database_service.dart';
 import 'providers/sensor_provider.dart';
 import 'service/ai_service.dart';
@@ -17,12 +18,14 @@ import 'screens/settings_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 1. 加载安全环境变量 (.env)
   try {
     await dotenv.load(fileName: ".env");
   } catch (e) {
     debugPrint("环境变量加载失败，请检查是否创建了 .env 文件: $e");
   }
 
+  // 2. 初始化 Firebase
   try {
     await Firebase.initializeApp();
   } catch (e) {
@@ -125,8 +128,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       backgroundColor: const Color(0xFFF8FBF8),
       body: IndexedStack(
         index: _selectedIndex,
-        children: const[
-          DashboardScreen(),
+        children: const [
+          DashboardScreen(), // 现在的 Dashboard 拥有了 Stateful 的日历
           Center(child: Text("Connected Map")),
           Center(child: Text("Forum")),
           SettingsScreen(),
@@ -140,7 +143,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             builder: (BuildContext ctx) {
               return SafeArea(
                 child: Wrap(
-                  children:[
+                  children: [
                     ListTile(
                       leading: const Icon(Icons.camera_alt, color: Colors.green),
                       title: const Text('Take a Photo'),
@@ -174,7 +177,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         notchMargin: 8.0,
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children:[
+          children: [
             IconButton(icon: Icon(Icons.calendar_today, color: _selectedIndex == 0 ? Colors.green : Colors.grey), onPressed: () => setState(() => _selectedIndex = 0)),
             IconButton(icon: Icon(Icons.map_outlined, color: _selectedIndex == 1 ? Colors.green : Colors.grey), onPressed: () => setState(() => _selectedIndex = 1)),
             const SizedBox(width: 40),
@@ -196,14 +199,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children:[
+        children: [
           Center(
             child: Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10))),
           ),
           const SizedBox(height: 20),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children:[
+            children: [
               Text("AI Vision Result", style: TextStyle(color: Colors.green.shade700, fontWeight: FontWeight.bold, fontSize: 16)),
               const Icon(Icons.verified, color: Colors.green),
             ],
@@ -212,7 +215,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           Text("${foodData['food_name']}", style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
           const SizedBox(height: 20),
           Row(
-            children:[
+            children: [
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(color: Colors.orange.shade50, shape: BoxShape.circle),
@@ -238,13 +241,18 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text("Saving meal to cloud... ☁️")),
                 );
+
+                // 核心：保存数据到云端
                 bool success = await DatabaseService.saveMealToCloud(
                   foodData: foodData,
                   decibel: sensorProvider.decibel,
                   location: sensorProvider.location,
                 );
+
                 if (success) {
-                  sensorProvider.logMeal(foodData['calories'] as int);
+                  // 云端保存成功后，强制刷新今天的数据 (UI 会实时看到圆环跳动)
+                  sensorProvider.refreshDataForDate(DateTime.now());
+
                   if (!context.mounted) return;
                   ScaffoldMessenger.of(context).hideCurrentSnackBar();
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -269,7 +277,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
-        children:[
+        children: [
           SizedBox(width: 60, child: Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500))),
           Expanded(
             child: LinearProgressIndicator(value: percent, backgroundColor: Colors.grey.shade200, color: color, minHeight: 8, borderRadius: BorderRadius.circular(10)),
@@ -282,8 +290,27 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 }
 
-class DashboardScreen extends StatelessWidget {
+// ---------------- 仪表盘与交互式日历组件 ----------------
+
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  DateTime _selectedDay = DateTime.now();
+  DateTime _focusedDay = DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    // 页面加载时自动从云端获取今天的数据
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<SensorProvider>().refreshDataForDate(_selectedDay);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -291,14 +318,27 @@ class DashboardScreen extends StatelessWidget {
 
     return SingleChildScrollView(
       child: Column(
-        children:[
+        children: [
           const SizedBox(height: 60),
+          // 真正的交互式日历
           TableCalendar(
-            focusedDay: DateTime.now(),
+            focusedDay: _focusedDay,
             firstDay: DateTime.utc(2024, 1, 1),
             lastDay: DateTime.utc(2030, 12, 31),
             calendarFormat: CalendarFormat.week,
             headerVisible: false,
+            // 核心逻辑：处理点击事件
+            selectedDayPredicate: (day) {
+              return isSameDay(_selectedDay, day);
+            },
+            onDaySelected: (selectedDay, focusedDay) {
+              setState(() {
+                _selectedDay = selectedDay;
+                _focusedDay = focusedDay;
+              });
+              // 触发云端查询，圆环会根据选中的日期立刻更新！
+              context.read<SensorProvider>().refreshDataForDate(selectedDay);
+            },
             calendarStyle: CalendarStyle(
               selectedDecoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle),
               todayDecoration: BoxDecoration(color: Colors.green.withAlpha(50), shape: BoxShape.circle),
@@ -309,11 +349,12 @@ class DashboardScreen extends StatelessWidget {
             height: 240,
             width: 240,
             child: CustomPaint(
+              // 圆环使用云端的动态数据
               painter: CaloriePainter(current: sensorProvider.remainingCalories.toDouble(), total: sensorProvider.totalCaloriesTarget.toDouble()),
               child: Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  children:[
+                  children: [
                     Text("${sensorProvider.remainingCalories}", style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: Color(0xFF2E3E2E))),
                     Text("Kcal Left", style: TextStyle(fontSize: 16, color: Colors.grey.shade600)),
                   ],
@@ -326,7 +367,7 @@ class DashboardScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children:[
+              children: [
                 _sensorCard(context, "Ambient Noise", "${sensorProvider.decibel.toStringAsFixed(1)} dB", Icons.graphic_eq, Colors.orange),
                 _sensorCard(context, "Spatial Context", sensorProvider.location, Icons.location_on, Colors.blue),
               ],
@@ -348,10 +389,10 @@ class DashboardScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        boxShadow:[BoxShadow(color: Colors.black.withAlpha(10), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: Colors.black.withAlpha(10), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
-        children:[
+        children: [
           Icon(icon, color: color, size: 28),
           const SizedBox(height: 8),
           Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
@@ -366,7 +407,7 @@ class DashboardScreen extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children:[
+        children: [
           Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
           const SizedBox(height: 4),
           LinearProgressIndicator(value: percent, backgroundColor: Colors.grey.shade200, color: color, minHeight: 8, borderRadius: BorderRadius.circular(10)),

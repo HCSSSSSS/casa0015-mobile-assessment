@@ -10,29 +10,26 @@ class DatabaseService {
     required String location,
   }) async {
     try {
-      // 1. 获取当前登录的用户
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         debugPrint("Error: No user logged in.");
         return false;
       }
 
-      // 2. 定位到该用户的专属数据库路径: users/{uid}/meals
       final docRef = FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .collection('meals');
 
-      // 3. 将 AI 数据和传感器数据打包成 JSON 存入云端
       await docRef.add({
         'food_name': foodData['food_name'],
         'calories': foodData['calories'],
         'protein': foodData['protein'],
         'carbs': foodData['carbs'],
         'fat': foodData['fat'],
-        'decibel': decibel,           // 物理环境：噪音
-        'location': location,         // 物理环境：GPS坐标
-        'timestamp': FieldValue.serverTimestamp(), // 绝对准确的云端时间戳
+        'decibel': decibel,           
+        'location': location,         
+        'timestamp': FieldValue.serverTimestamp(), 
       });
 
       debugPrint("✅ 成功存入 Firestore Cloud!");
@@ -40,6 +37,38 @@ class DatabaseService {
     } catch (e) {
       debugPrint("❌ 存入 Firestore 失败: $e");
       return false;
+    }
+  }
+
+  // 核心功能：根据日期从云端读取该日所有餐食的总热量
+  static Future<int> getConsumedCaloriesForDate(DateTime date) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return 0;
+
+      // 1. 计算当天的起始时间戳和结束时间戳
+      DateTime startOfDay = DateTime(date.year, date.month, date.day);
+      DateTime endOfDay = startOfDay.add(const Duration(days: 1));
+
+      // 2. 执行 Firestore 查询，过滤出该范围内的记录
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('meals')
+          .where('timestamp', isGreaterThanOrEqualTo: startOfDay)
+          .where('timestamp', isLessThan: endOfDay)
+          .get();
+
+      // 3. 累加所有查询到的卡路里
+      int total = 0;
+      for (var doc in snapshot.docs) {
+        total += (doc.data()['calories'] as num).toInt();
+      }
+
+      return total;
+    } catch (e) {
+      debugPrint("❌ 读取云端热量失败: $e");
+      return 0;
     }
   }
 }
