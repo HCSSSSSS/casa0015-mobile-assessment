@@ -71,4 +71,35 @@ class DatabaseService {
       return 0;
     }
   }
+
+  // 核心功能：根据日期从云端读取该日所有餐食的营养成分（蛋白质、碳水、脂肪）
+  static Future<Map<String, double>> getNutrientsForDate(DateTime date) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return {'protein': 0, 'carbs': 0, 'fat': 0};
+
+      DateTime startOfDay = DateTime(date.year, date.month, date.day);
+      DateTime endOfDay = startOfDay.add(const Duration(days: 1));
+
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('meals')
+          .where('timestamp', isGreaterThanOrEqualTo: startOfDay)
+          .where('timestamp', isLessThan: endOfDay)
+          .get();
+
+      double protein = 0, carbs = 0, fat = 0;
+      for (var doc in snapshot.docs) {
+        protein += (doc.data()['protein'] as num? ?? 0).toDouble();
+        carbs += (doc.data()['carbs'] as num? ?? 0).toDouble();
+        fat += (doc.data()['fat'] as num? ?? 0).toDouble();
+      }
+
+      return {'protein': protein, 'carbs': carbs, 'fat': fat};
+    } catch (e) {
+      debugPrint("读取营养数据失败: $e");
+      return {'protein': 0, 'carbs': 0, 'fat': 0};
+    }
+  }
 }

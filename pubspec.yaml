@@ -21,7 +21,6 @@ dependencies:
   # 2. 传感器与物理环境 (Connected Environment 核心分数)
   geolocator: ^13.0.1           # GPS 定位
   noise_meter: ^5.0.0           # 麦克风分贝监测
-  light_sensor: ^3.0.2          # 光敏传感器 (部分模拟器不支持，但代码要写)
 
   # 3. 外部服务与 AI (API 集成 15% 分数)
   google_generative_ai: ^0.4.5  # Google Gemini AI 识图逻辑

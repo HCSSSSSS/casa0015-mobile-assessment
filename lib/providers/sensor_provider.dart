@@ -16,6 +16,9 @@ class SensorProvider with ChangeNotifier {
   // 用户健康数据
   int _totalCaloriesTarget = 2000; // 默认值，但稍后会被云端数据覆盖
   int _consumedCalories = 0;
+  double _protein = 0;
+  double _carbs = 0;
+  double _fat = 0;
 
   // 供外部读取的 Getter
   double get decibel => _decibel;
@@ -24,6 +27,9 @@ class SensorProvider with ChangeNotifier {
 
   int get totalCaloriesTarget => _totalCaloriesTarget;
   int get consumedCalories => _consumedCalories;
+  double get protein => _protein;
+  double get carbs => _carbs;
+  double get fat => _fat;
   // 核心逻辑：计算剩余卡路里，确保不会变成负数
   int get remainingCalories => (_totalCaloriesTarget - _consumedCalories).clamp(0, _totalCaloriesTarget);
 
@@ -69,10 +75,16 @@ class SensorProvider with ChangeNotifier {
     try {
       int cloudCalories = await DatabaseService.getConsumedCaloriesForDate(date);
       _consumedCalories = cloudCalories;
+
+      final nutrients = await DatabaseService.getNutrientsForDate(date);
+      _protein = nutrients['protein']!;
+      _carbs = nutrients['carbs']!;
+      _fat = nutrients['fat']!;
+
       notifyListeners();
-      debugPrint("🔄 已刷新日期 ${date.toIso8601String()} 的热量: $cloudCalories Kcal");
+      debugPrint("🔄 已刷新日期 ${date.toIso8601String()} 的热量: $cloudCalories Kcal, 营养: $nutrients");
     } catch (e) {
-      debugPrint("刷新热量失败: $e");
+      debugPrint("刷新数据失败: $e");
     }
   }
 
@@ -122,7 +134,7 @@ class SensorProvider with ChangeNotifier {
           distanceFilter: 10,
         ),
       ).listen((Position position) {
-        _location = "${position.latitude.toStringAsFixed(2)}, ${position.longitude.toStringAsFixed(2)}";
+        _location = "${position.latitude.toStringAsFixed(3)}, ${position.longitude.toStringAsFixed(3)}";
         notifyListeners();
       });
     } catch (e) {

@@ -13,7 +13,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'providers/sensor_provider.dart';
 import 'service/ai_service.dart';
 import 'service/database_service.dart';
-
+import 'screens/onboarding_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/map_screen.dart';
@@ -65,7 +65,22 @@ class SenseFoodApp extends StatelessWidget {
             );
           }
           if (snapshot.hasData) {
-            return const MainNavigationScreen();
+            return FutureBuilder<DocumentSnapshot>(
+              future: FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(snapshot.data!.uid)
+                  .get(),
+              builder: (context, userSnapshot) {
+                if (userSnapshot.connectionState == ConnectionState.waiting) {
+                  return const Scaffold(body: Center(child: CircularProgressIndicator(color: Colors.green)));
+                }
+                final data = userSnapshot.data?.data() as Map<String, dynamic>?;
+                if (data == null || data['profile_completed'] != true) {
+                  return const OnboardingScreen();
+                }
+                return const MainNavigationScreen();
+              },
+            );
           }
           return const LoginScreen();
         },
@@ -385,6 +400,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             lastDay: DateTime.utc(2030, 12, 31),
             calendarFormat: CalendarFormat.week,
             headerVisible: false,
+            availableGestures: AvailableGestures.all,
             selectedDayPredicate: (day) {
               return isSameDay(_selectedDay, day);
             },
@@ -434,13 +450,52 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
           ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(
+                color: _getNoiseColor(sensorProvider.decibel).withAlpha(30),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(_getNoiseIcon(sensorProvider.decibel),
+                      color: _getNoiseColor(sensorProvider.decibel), size: 18),
+                  const SizedBox(width: 8),
+                  Text(_getNoiseAdvice(sensorProvider.decibel),
+                      style: TextStyle(fontSize: 13, color: _getNoiseColor(sensorProvider.decibel))),
+                ],
+              ),
+            ),
+          ),
           const SizedBox(height: 20),
-          _nutrientBar("Protein", 0.7, Colors.green),
-          _nutrientBar("Carbs", 0.4, Colors.orange),
-          _nutrientBar("Fat", 0.3, Colors.yellow.shade700),
+          _nutrientBar("Protein", (sensorProvider.protein / 150).clamp(0.0, 1.0), Colors.green, "${sensorProvider.protein.toStringAsFixed(1)}g / 150g"),
+          _nutrientBar("Carbs", (sensorProvider.carbs / 250).clamp(0.0, 1.0), Colors.orange, "${sensorProvider.carbs.toStringAsFixed(1)}g / 250g"),
+          _nutrientBar("Fat", (sensorProvider.fat / 65).clamp(0.0, 1.0), Colors.yellow.shade700, "${sensorProvider.fat.toStringAsFixed(1)}g / 65g"),
         ],
       ),
     );
+  }
+
+  String _getNoiseAdvice(double db) {
+    if (db < 50) return "Quiet environment – great time to eat mindfully.";
+    if (db < 70) return "Moderate noise – stay aware of your eating pace.";
+    return "Noisy environment – try to eat slowly and avoid overeating.";
+  }
+
+  Color _getNoiseColor(double db) {
+    if (db < 50) return Colors.green;
+    if (db < 70) return Colors.orange;
+    return Colors.red;
+  }
+
+  IconData _getNoiseIcon(double db) {
+    if (db < 50) return Icons.spa_outlined;
+    if (db < 70) return Icons.volume_down;
+    return Icons.volume_up;
   }
 
   Widget _sensorCard(BuildContext context, String title, String value, IconData icon, Color color) {
@@ -463,13 +518,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _nutrientBar(String label, double percent, Color color) {
+  Widget _nutrientBar(String label, double percent, Color color, String value) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+              Text(value, style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+            ],
+          ),
           const SizedBox(height: 4),
           LinearProgressIndicator(value: percent, backgroundColor: Colors.grey.shade200, color: color, minHeight: 8, borderRadius: BorderRadius.circular(10)),
         ],
