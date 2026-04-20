@@ -17,7 +17,7 @@ import 'screens/onboarding_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/map_screen.dart';
-import 'screens/forum_screen.dart';
+import 'screens/journal_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -158,7 +158,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         children: const [
           DashboardScreen(),
           MapScreen(),
-          ForumScreen(),
+          JournalScreen(),
           SettingsScreen(),
         ],
       ),
@@ -217,7 +217,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             ),
             const SizedBox(width: 40),
             IconButton(
-              icon: Icon(Icons.people_outline, color: _selectedIndex == 2 ? Colors.green : Colors.grey),
+              icon: Icon(Icons.book_outlined, color: _selectedIndex == 2 ? Colors.green : Colors.grey),
               onPressed: () => setState(() => _selectedIndex = 2),
             ),
             IconButton(
@@ -276,40 +276,24 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           _bottomSheetNutrientBar("Carbs", (foodData['carbs'] / 100).toDouble().clamp(0.0, 1.0), Colors.orange, "${foodData['carbs']}g"),
           _bottomSheetNutrientBar("Fat", (foodData['fat'] / 100).toDouble().clamp(0.0, 1.0), Colors.yellow.shade700, "${foodData['fat']}g"),
           const Spacer(),
-
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Colors.green, width: 2),
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                  ),
-                  onPressed: () async => _handleLogMeal(context, foodData, shareToForum: false),
-                  child: const Text("Just Log", style: TextStyle(fontSize: 16, color: Colors.green, fontWeight: FontWeight.bold)),
-                ),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
               ),
-              const SizedBox(width: 15),
-              Expanded(
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                  ),
-                  onPressed: () async => _handleLogMeal(context, foodData, shareToForum: true),
-                  child: const Text("Log & Share", style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
-                ),
-              ),
-            ],
+              onPressed: () async => _handleLogMeal(context, foodData),
+              child: const Text("Log This Meal", style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _handleLogMeal(BuildContext context, Map<String, dynamic> foodData, {required bool shareToForum}) async {
+  Future<void> _handleLogMeal(BuildContext context, Map<String, dynamic> foodData) async {
     Navigator.pop(context);
     final sensorProvider = context.read<SensorProvider>();
     final messenger = ScaffoldMessenger.of(context);
@@ -325,24 +309,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     if (!mounted) return;
 
     if (success) {
-      if (shareToForum) {
-        final user = FirebaseAuth.instance.currentUser;
-        await FirebaseFirestore.instance.collection('public_posts').add({
-          'food_name': foodData['food_name'],
-          'calories': foodData['calories'],
-          'decibel': sensorProvider.decibel.toStringAsFixed(1),
-          'author_name': user?.email?.split('@')[0] ?? 'Explorer',
-          'timestamp': FieldValue.serverTimestamp(),
-        });
-      }
-
       sensorProvider.refreshDataForDate(DateTime.now());
-
-      if (!mounted) return;
       messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(
-        SnackBar(content: Text(shareToForum ? "Logged and Shared to Community! 🌍" : "Meal Logged Successfully! ✅")),
-      );
+      messenger.showSnackBar(const SnackBar(content: Text("Meal Logged Successfully! ✅")));
     } else {
       messenger.showSnackBar(const SnackBar(content: Text("Failed to log meal. Please try again. ❌")));
     }
@@ -375,15 +344,25 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   DateTime _selectedDay = DateTime.now();
   DateTime _focusedDay = DateTime.now();
+  bool _isMonthView = false;
+  Map<String, int> _monthlyCalories = {};
 
   @override
   void initState() {
     super.initState();
+    _loadMonthData(_focusedDay);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         context.read<SensorProvider>().refreshDataForDate(_selectedDay);
       }
     });
+  }
+
+  Future<void> _loadMonthData(DateTime month) async {
+    final data = await DatabaseService.getMonthlyCalories(month.year, month.month);
+    if (mounted) {
+      setState(() => _monthlyCalories = data);
+    }
   }
 
   @override
@@ -394,12 +373,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Column(
         children: [
           const SizedBox(height: 60),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() => _isMonthView = !_isMonthView);
+                    if (_isMonthView) _loadMonthData(_focusedDay);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(_isMonthView ? Icons.view_week : Icons.calendar_month, size: 16, color: Colors.green),
+                        const SizedBox(width: 4),
+                        Text(_isMonthView ? "Week" : "Month", style: const TextStyle(fontSize: 13, color: Colors.green)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
           TableCalendar(
             focusedDay: _focusedDay,
             firstDay: DateTime.utc(2024, 1, 1),
             lastDay: DateTime.utc(2030, 12, 31),
-            calendarFormat: CalendarFormat.week,
-            headerVisible: false,
+            calendarFormat: _isMonthView ? CalendarFormat.month : CalendarFormat.week,
+            headerVisible: _isMonthView,
+            availableCalendarFormats: const {
+              CalendarFormat.month: 'Month',
+              CalendarFormat.week: 'Week',
+            },
+            headerStyle: const HeaderStyle(formatButtonVisible: false, titleCentered: true),
             availableGestures: AvailableGestures.all,
             selectedDayPredicate: (day) {
               return isSameDay(_selectedDay, day);
@@ -411,11 +423,56 @@ class _DashboardScreenState extends State<DashboardScreen> {
               });
               context.read<SensorProvider>().refreshDataForDate(selectedDay);
             },
+            onPageChanged: (focusedDay) {
+              setState(() {
+                _focusedDay = focusedDay;
+              });
+              if (_isMonthView) _loadMonthData(focusedDay);
+            },
             calendarStyle: const CalendarStyle(
               selectedDecoration: BoxDecoration(color: Colors.green, shape: BoxShape.circle),
               todayDecoration: BoxDecoration(color: Color(0x334CAF50), shape: BoxShape.circle),
             ),
+            calendarBuilders: CalendarBuilders(
+              defaultBuilder: (context, day, focusedDay) {
+                if (!_isMonthView) return null;
+                final key = "${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}";
+                final calories = _monthlyCalories[key] ?? 0;
+                final intensity = (calories / 2000).clamp(0.0, 1.0);
+                if (calories == 0) return null;
+                return Center(
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.green.withValues(alpha: 0.1 + intensity * 0.6),
+                    ),
+                    child: Center(
+                      child: Text("${day.day}",
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: intensity > 0.5 ? Colors.white : Colors.black87,
+                          )),
+                    ),
+                  ),
+                );
+              },
+            ),
           ),
+          if (!isSameDay(_selectedDay, DateTime.now()))
+            TextButton.icon(
+              onPressed: () {
+                setState(() {
+                  _selectedDay = DateTime.now();
+                  _focusedDay = DateTime.now();
+                });
+                context.read<SensorProvider>().refreshDataForDate(DateTime.now());
+              },
+              icon: const Icon(Icons.today, color: Colors.green, size: 16),
+              label: const Text("Back to Today", style: TextStyle(color: Colors.green)),
+            ),
           const SizedBox(height: 30),
           SizedBox(
             height: 240,

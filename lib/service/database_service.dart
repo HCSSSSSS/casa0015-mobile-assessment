@@ -102,4 +102,38 @@ class DatabaseService {
       return {'protein': 0, 'carbs': 0, 'fat': 0};
     }
   }
+
+  // 核心功能：按月批量读取热量数据
+  static Future<Map<String, int>> getMonthlyCalories(int year, int month) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return {};
+
+      DateTime start = DateTime(year, month, 1);
+      DateTime end = DateTime(year, month + 1, 1);
+
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('meals')
+          .where('timestamp', isGreaterThanOrEqualTo: start)
+          .where('timestamp', isLessThan: end)
+          .get();
+
+      Map<String, int> result = {};
+      for (var doc in snapshot.docs) {
+        final data = doc.data();
+        final ts = data['timestamp'];
+        if (ts is Timestamp) {
+          final date = ts.toDate();
+          final key = "${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}";
+          result[key] = (result[key] ?? 0) + (data['calories'] as num? ?? 0).toInt();
+        }
+      }
+      return result;
+    } catch (e) {
+      debugPrint("读取月度数据失败: $e");
+      return {};
+    }
+  }
 }
