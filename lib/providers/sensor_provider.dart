@@ -36,6 +36,7 @@ class SensorProvider with ChangeNotifier {
   NoiseMeter? _noiseMeter;
   StreamSubscription<NoiseReading>? _noiseSubscription;
   StreamSubscription<Position>? _locationSubscription;
+  DateTime _lastNoiseUpdate = DateTime.now();
 
   SensorProvider() {
     initSensors();
@@ -118,8 +119,12 @@ class SensorProvider with ChangeNotifier {
     try {
       _noiseMeter = NoiseMeter();
       _noiseSubscription = _noiseMeter?.noise.listen((reading) {
-        _decibel = reading.meanDecibel;
-        notifyListeners();
+        final now = DateTime.now();
+        if (now.difference(_lastNoiseUpdate).inMilliseconds > 1000) {
+          _decibel = reading.meanDecibel;
+          _lastNoiseUpdate = now;
+          notifyListeners();
+        }
       });
     } catch (e) {
       debugPrint("Noise Meter Error: $e");

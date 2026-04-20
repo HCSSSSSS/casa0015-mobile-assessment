@@ -22,17 +22,9 @@ import 'screens/journal_screen.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  try {
-    await dotenv.load(fileName: ".env");
-  } catch (e) {
-    debugPrint("环境变量加载失败，请检查是否创建了 .env 文件: $e");
-  }
+  await dotenv.load(fileName: ".env");
 
-  try {
-    await Firebase.initializeApp();
-  } catch (e) {
-    debugPrint("Firebase initialization failed: $e");
-  }
+  await Firebase.initializeApp();
 
   runApp(
     MultiProvider(
@@ -107,7 +99,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("AI is analyzing your food... ⏳"),
+          content: Text("Analyzing your food... ⏳"),
           duration: Duration(seconds: 3),
         ),
       );
@@ -522,8 +514,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   Icon(_getNoiseIcon(sensorProvider.decibel),
                       color: _getNoiseColor(sensorProvider.decibel), size: 18),
                   const SizedBox(width: 8),
-                  Text(_getNoiseAdvice(sensorProvider.decibel),
-                      style: TextStyle(fontSize: 13, color: _getNoiseColor(sensorProvider.decibel))),
+                  Flexible(
+                    child: Text(_getNoiseAdvice(sensorProvider.decibel),
+                        style: TextStyle(fontSize: 13, color: _getNoiseColor(sensorProvider.decibel))),
+                  ),
                 ],
               ),
             ),
@@ -538,20 +532,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   String _getNoiseAdvice(double db) {
-    if (db < 50) return "Quiet environment – great time to eat mindfully.";
-    if (db < 70) return "Moderate noise – stay aware of your eating pace.";
+    if (db < 60) return "Calm environment – great time to eat mindfully.";
+    if (db < 80) return "Moderate noise – stay aware of your eating pace.";
     return "Noisy environment – try to eat slowly and avoid overeating.";
   }
 
   Color _getNoiseColor(double db) {
-    if (db < 50) return Colors.green;
-    if (db < 70) return Colors.orange;
+    if (db < 60) return Colors.green;
+    if (db < 80) return Colors.orange;
     return Colors.red;
   }
 
   IconData _getNoiseIcon(double db) {
-    if (db < 50) return Icons.spa_outlined;
-    if (db < 70) return Icons.volume_down;
+    if (db < 60) return Icons.spa_outlined;
+    if (db < 80) return Icons.volume_down;
     return Icons.volume_up;
   }
 
