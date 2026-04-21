@@ -71,7 +71,17 @@ flutter run
 
 ## 📸 Screenshots
 
-<!-- Add screenshots here -->
+| Login | Onboarding | Dashboard |
+|---|---|---|
+| ![Login](screenshots/login.png) | ![Onboarding](screenshots/onboarding.png) | ![Dashboard](screenshots/dashboard.png) |
+
+| Camera Menu | AI Analyzing | AI Result |
+|---|---|---|
+| ![Camera](screenshots/camera_menu.png) | ![Analyzing](screenshots/analyzing.png) | ![Result](screenshots/ai_result.png) |
+
+| Map | Journal | Settings |
+|---|---|---|
+| ![Map](screenshots/map.png) | ![Journal](screenshots/journal.png) | ![Settings](screenshots/settings.png) |
 
 ---
 
