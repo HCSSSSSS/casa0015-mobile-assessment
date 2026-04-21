@@ -5,22 +5,23 @@ import 'package:noise_meter/noise_meter.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:geocoding/geocoding.dart';
 import '../service/database_service.dart';
 
 class SensorProvider with ChangeNotifier {
-  // 物理环境传感器数据
+  // Physical environment sensor data
   double _decibel = 0.0;
   String _location = "Locating...";
   bool _isPermissionGranted = false;
 
-  // 用户健康数据
-  int _totalCaloriesTarget = 2000; // 默认值，但稍后会被云端数据覆盖
+  // User health data
+  int _totalCaloriesTarget = 2000; // Default value, will be overwritten by cloud data
   int _consumedCalories = 0;
   double _protein = 0;
   double _carbs = 0;
   double _fat = 0;
 
-  // 供外部读取的 Getter
+  // Getters for external access
   double get decibel => _decibel;
   String get location => _location;
   bool get isPermissionGranted => _isPermissionGranted;
@@ -30,7 +31,8 @@ class SensorProvider with ChangeNotifier {
   double get protein => _protein;
   double get carbs => _carbs;
   double get fat => _fat;
-  // 核心逻辑：计算剩余卡路里，确保不会变成负数
+  
+  // Core logic: Calculate remaining calories, ensure it doesn't go negative
   int get remainingCalories => (_totalCaloriesTarget - _consumedCalories).clamp(0, _totalCaloriesTarget);
 
   NoiseMeter? _noiseMeter;
@@ -40,30 +42,38 @@ class SensorProvider with ChangeNotifier {
 
   SensorProvider() {
     initSensors();
-    _fetchUserPreferences(); // 初始化时，自动去云端拉取用户的设置！
+    _fetchUserPreferences(); // Fetch user settings from cloud on initialization
   }
 
-  // --- 数据库交互逻辑 ---
+  // --- Database Interaction Logic ---
 
-  // 核心升级：从云端拉取用户的专属设置（如他们自己设定的目标热量）
+  // Core upgrade: Pull user-specific settings (e.g., their self-defined calorie target) from cloud
   Future<void> _fetchUserPreferences() async {
+    // Reset to default values first
+    _totalCaloriesTarget = 2000;
+    _consumedCalories = 0;
+    _protein = 0;
+    _carbs = 0;
+    _fat = 0;
+    notifyListeners();
+
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       try {
         final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
         if (doc.exists && doc.data()!.containsKey('target_calories')) {
-          // 如果云端有数据，覆盖默认的 2000
+          // If cloud data exists, overwrite default 2000
           _totalCaloriesTarget = (doc.data()!['target_calories'] as num).toInt();
           notifyListeners();
-          debugPrint("⚙️ 从云端同步了目标热量: $_totalCaloriesTarget Kcal");
+          debugPrint("⚙️ Synced target calories from cloud: $_totalCaloriesTarget Kcal");
         }
       } catch (e) {
-        debugPrint("拉取用户偏好失败: $e");
+        debugPrint("Failed to fetch user preferences: $e");
       }
     }
   }
 
-  // 供设置页面调用，修改内存中的热量目标（云端写入逻辑在 SettingsScreen 已经做过了）
+  // Called by settings page to modify memory target (cloud writing logic is in SettingsScreen)
   void updateTargetCalories(int newTarget) {
     if (newTarget > 0) {
       _totalCaloriesTarget = newTarget;
@@ -71,7 +81,7 @@ class SensorProvider with ChangeNotifier {
     }
   }
 
-  // 刷新特定日期的热量数据（从 Firestore 读取，日历点击时触发）
+  // Refresh calorie data for a specific date (read from Firestore, triggered by calendar click)
   Future<void> refreshDataForDate(DateTime date) async {
     try {
       int cloudCalories = await DatabaseService.getConsumedCaloriesForDate(date);
@@ -83,19 +93,30 @@ class SensorProvider with ChangeNotifier {
       _fat = nutrients['fat']!;
 
       notifyListeners();
-      debugPrint("🔄 已刷新日期 ${date.toIso8601String()} 的热量: $cloudCalories Kcal, 营养: $nutrients");
+      debugPrint("🔄 Refreshed calories for ${date.toIso8601String()}: $cloudCalories Kcal, Nutrients: $nutrients");
     } catch (e) {
-      debugPrint("刷新数据失败: $e");
+      debugPrint("Failed to refresh data: $e");
     }
   }
 
-  // 记录刚刚吃下的食物（拍照后临时增加，等待下次从云端拉取覆盖）
+  // Log meal just eaten (temporary increase after photo/text, waiting for next cloud pull)
   void logMeal(int calories) {
     _consumedCalories += calories;
     notifyListeners();
   }
 
-  // --- 物理传感器交互逻辑 ---
+  Future<void> refreshOnAuthChange() async {
+    _totalCaloriesTarget = 2000;
+    _consumedCalories = 0;
+    _protein = 0;
+    _carbs = 0;
+    _fat = 0;
+    notifyListeners();
+    await _fetchUserPreferences();
+    await refreshDataForDate(DateTime.now());
+  }
+
+  // --- Physical Sensor Interaction Logic ---
 
   Future<void> initSensors() async {
     Map<Permission, PermissionStatus> statuses = await [
@@ -138,9 +159,27 @@ class SensorProvider with ChangeNotifier {
           accuracy: LocationAccuracy.high,
           distanceFilter: 10,
         ),
-      ).listen((Position position) {
+      ).listen((Position position) async {
         _location = "${position.latitude.toStringAsFixed(3)}, ${position.longitude.toStringAsFixed(3)}";
         notifyListeners();
+
+        // Reverse geocoding
+        try {
+          List<Placemark> placemarks = await placemarkFromCoordinates(
+            position.latitude,
+            position.longitude,
+          );
+          if (placemarks.isNotEmpty) {
+            final place = placemarks.first;
+            _location = "${place.street ?? ''}, ${place.locality ?? ''}".trim();
+            if (_location == ',') {
+              _location = "${position.latitude.toStringAsFixed(3)}, ${position.longitude.toStringAsFixed(3)}";
+            }
+            notifyListeners();
+          }
+        } catch (e) {
+          debugPrint("Geocoding error: $e");
+        }
       });
     } catch (e) {
       debugPrint("GPS Error: $e");

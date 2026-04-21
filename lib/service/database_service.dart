@@ -3,7 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 class DatabaseService {
-  // 核心功能：将一顿饭的所有环境与营养数据打包存入云端
+  // Core functionality: Package and save all environmental and nutritional data to cloud
   static Future<bool> saveMealToCloud({
     required Map<String, dynamic> foodData,
     required double decibel,
@@ -32,25 +32,25 @@ class DatabaseService {
         'timestamp': FieldValue.serverTimestamp(), 
       });
 
-      debugPrint("✅ 成功存入 Firestore Cloud!");
+      debugPrint("✅ Successfully saved to Firestore Cloud!");
       return true;
     } catch (e) {
-      debugPrint("❌ 存入 Firestore 失败: $e");
+      debugPrint("❌ Failed to save to Firestore: $e");
       return false;
     }
   }
 
-  // 核心功能：根据日期从云端读取该日所有餐食的总热量
+  // Core functionality: Read total calories for a given date from cloud
   static Future<int> getConsumedCaloriesForDate(DateTime date) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return 0;
 
-      // 1. 计算当天的起始时间戳和结束时间戳
+      // 1. Calculate start and end timestamps for the day
       DateTime startOfDay = DateTime(date.year, date.month, date.day);
       DateTime endOfDay = startOfDay.add(const Duration(days: 1));
 
-      // 2. 执行 Firestore 查询，过滤出该范围内的记录
+      // 2. Execute Firestore query, filtering records within the range
       final snapshot = await FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
@@ -59,7 +59,7 @@ class DatabaseService {
           .where('timestamp', isLessThan: endOfDay)
           .get();
 
-      // 3. 累加所有查询到的卡路里
+      // 3. Accumulate all queried calories
       int total = 0;
       for (var doc in snapshot.docs) {
         total += (doc.data()['calories'] as num).toInt();
@@ -67,12 +67,12 @@ class DatabaseService {
 
       return total;
     } catch (e) {
-      debugPrint("❌ 读取云端热量失败: $e");
+      debugPrint("❌ Failed to read cloud calories: $e");
       return 0;
     }
   }
 
-  // 核心功能：根据日期从云端读取该日所有餐食的营养成分（蛋白质、碳水、脂肪）
+  // Core functionality: Read nutritional components (protein, carbs, fat) for a given date from cloud
   static Future<Map<String, double>> getNutrientsForDate(DateTime date) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -98,12 +98,12 @@ class DatabaseService {
 
       return {'protein': protein, 'carbs': carbs, 'fat': fat};
     } catch (e) {
-      debugPrint("读取营养数据失败: $e");
+      debugPrint("Failed to read nutrient data: $e");
       return {'protein': 0, 'carbs': 0, 'fat': 0};
     }
   }
 
-  // 核心功能：按月批量读取热量数据
+  // Core functionality: Batch read calorie data by month
   static Future<Map<String, int>> getMonthlyCalories(int year, int month) async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -132,7 +132,7 @@ class DatabaseService {
       }
       return result;
     } catch (e) {
-      debugPrint("读取月度数据失败: $e");
+      debugPrint("Failed to read monthly data: $e");
       return {};
     }
   }

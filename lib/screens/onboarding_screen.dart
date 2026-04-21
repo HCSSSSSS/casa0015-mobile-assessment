@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../main.dart'; // 路径现在是正确的 lib/screens -> lib/main.dart
+import '../main.dart'; // Path: lib/screens -> lib/main.dart
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -31,19 +31,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     if (user == null) return;
 
     try {
-      // 存入 Firestore 核心配置
+      // Save core configuration to Firestore
       await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
         'name': _nameController.text.trim(),
         'age': int.tryParse(_ageController.text) ?? 20,
         'gender': _selectedGender,
         'weight': double.tryParse(_weightController.text) ?? 60.0,
         'target_calories': int.tryParse(_targetCalController.text) ?? 2000,
-        'profile_completed': true, // 标记该用户已完成初始化
+        'profile_completed': true, // Mark user as having completed initialization
       }, SetOptions(merge: true));
 
       if (!mounted) return;
       
-      // 关键改进：跳转到主页并清空之前的导航栈
+      // Navigate to home and clear navigation stack
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(builder: (_) => const MainNavigationScreen()),
@@ -85,7 +85,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 const SizedBox(width: 15),
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    initialValue: _selectedGender, // 修复：将 value 改为 initialValue 以消除过时警告
+                    initialValue: _selectedGender, // Fix: Changed value to initialValue to clear deprecation warning
                     decoration: InputDecoration(
                       filled: true,
                       fillColor: Colors.white,

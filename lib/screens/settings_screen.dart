@@ -8,7 +8,7 @@ import '../providers/sensor_provider.dart';
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
-  // 1. 文本类型的弹窗 (给 Name 用)
+  // 1. Text-based dialog (for Name)
   Future<void> _editText(BuildContext context, String field, String currentVal, String title) async {
     final TextEditingController controller = TextEditingController(text: currentVal == "Not set" ? "" : currentVal);
     final user = FirebaseAuth.instance.currentUser;
@@ -40,7 +40,7 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  // 2. 核心交互：3D 滚轮选择器
+  // 2. Core interaction: 3D Wheel Picker
   Future<void> _showPicker(BuildContext context, String field, String title, List<String> options, int initialIndex) async {
     int selectedIndex = initialIndex < 0 ? 0 : initialIndex;
     final user = FirebaseAuth.instance.currentUser;
@@ -55,7 +55,7 @@ class SettingsScreen extends StatelessWidget {
           decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
           child: Column(
             children: [
-              // 顶部的取消和完成按钮
+              // Top cancel and done buttons
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 child: Row(
@@ -68,17 +68,17 @@ class SettingsScreen extends StatelessWidget {
                         Navigator.pop(ctx);
                         dynamic valueToSave = options[selectedIndex];
 
-                        // 清洗数据：把 "60 kg" 提取出数字 60；对于纯数字的 age，直接转 int
+                        // Clean data: Extract number 60 from "60 kg"; for age (pure number), convert directly to int
                         if (field == 'weight' || field == 'target_calories') {
                           valueToSave = int.tryParse(valueToSave.toString().replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
                         } else if (field == 'age') {
                           valueToSave = int.tryParse(valueToSave.toString()) ?? 0;
                         }
 
-                        // 存入云端
+                        // Save to cloud
                         await FirebaseFirestore.instance.collection('users').doc(user.uid).set({field: valueToSave}, SetOptions(merge: true));
 
-                        // 联动主页圆环
+                        // Update main page calorie circle
                         if (field == 'target_calories' && context.mounted) {
                           context.read<SensorProvider>().updateTargetCalories((valueToSave as num).toInt());
                         }
@@ -89,7 +89,7 @@ class SettingsScreen extends StatelessWidget {
                 ),
               ),
               const Divider(height: 1),
-              // 滚轮组件
+              // Wheel component
               Expanded(
                 child: CupertinoPicker(
                   itemExtent: 40,
@@ -105,7 +105,7 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  // 辅助方法：生成纯数字或带后缀的列表
+  // Helper method: Generate a list of strings (pure numbers or with suffix)
   List<String> _generateList(int start, int end, {String suffix = ""}) {
     if (suffix.isEmpty) {
       return List.generate(end - start + 1, (index) => "${start + index}");
@@ -113,7 +113,7 @@ class SettingsScreen extends StatelessWidget {
     return List.generate(end - start + 1, (index) => "${start + index} $suffix");
   }
 
-  // 3. 系统开关控制
+  // 3. System toggle controls
   Future<void> _toggleSystemSetting(String field, bool currentVal) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -134,7 +134,7 @@ class SettingsScreen extends StatelessWidget {
 
           final data = snapshot.data!.data() as Map<String, dynamic>? ?? {};
 
-          // 准备滚轮的数据（去掉了 Age 的后缀）
+          // Prepare picker data
           final genderOptions = ["Male", "Female", "Other"];
           final ageOptions = _generateList(10, 100);
           final weightOptions = _generateList(30, 200, suffix: "kg");
@@ -147,7 +147,7 @@ class SettingsScreen extends StatelessWidget {
               _buildSettingCard([
                 _buildSettingRow(context, Icons.person, Colors.blue, "Display Name", data['name']?.toString() ?? "Not set", () => _editText(context, 'name', data['name']?.toString() ?? "", "Display Name")),
                 _buildSettingRow(context, Icons.wc, Colors.pinkAccent, "Gender", data['gender']?.toString() ?? "Not set", () => _showPicker(context, 'gender', "Select Gender", genderOptions, genderOptions.indexOf(data['gender'] ?? "Male"))),
-                // Age 现在只显示纯数字
+                // Age is displayed as a pure number
                 _buildSettingRow(context, Icons.cake, Colors.yellow.shade700, "Age", "${data['age'] ?? '-'}", () => _showPicker(context, 'age', "Select Age", ageOptions, ageOptions.indexOf("${data['age'] ?? '25'}"))),
               ]),
 
@@ -172,7 +172,31 @@ class SettingsScreen extends StatelessWidget {
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.red, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: BorderSide(color: Colors.red.shade100))),
                   icon: const Icon(Icons.logout),
                   label: const Text("Sign Out", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  onPressed: () => FirebaseAuth.instance.signOut(),
+                  onPressed: () async {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        title: const Text("Sign Out"),
+                        content: const Text("Are you sure you want to sign out?"),
+                        actions: [
+                          TextButton(
+                              onPressed: () => Navigator.pop(context, false),
+                              child: const Text("Cancel", style: TextStyle(color: Colors.grey))),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text("Sign Out", style: TextStyle(color: Colors.white)),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirm == true) {
+                      await FirebaseAuth.instance.signOut();
+                    }
+                  },
                 ),
               ),
               const SizedBox(height: 80),

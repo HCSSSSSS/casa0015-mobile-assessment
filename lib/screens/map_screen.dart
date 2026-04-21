@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:geolocator/geolocator.dart'; // 引入定位包
+import 'package:geolocator/geolocator.dart'; // Location package
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -15,7 +15,7 @@ class _MapScreenState extends State<MapScreen> {
   GoogleMapController? _mapController;
   final Set<Marker> _markers = {};
 
-  // 默认初始位置
+  // Default initial position
   static const CameraPosition _initialPosition = CameraPosition(
     target: LatLng(51.5246, -0.1340),
     zoom: 12.0,
@@ -45,30 +45,39 @@ class _MapScreenState extends State<MapScreen> {
         if (data['location'] != null &&
             data['location'].toString().contains(',')) {
           final parts = data['location'].toString().split(',');
-          final lat = double.tryParse(parts[0].trim());
-          final lng = double.tryParse(parts[1].trim());
+          if (parts.length >= 2) {
+            final lat = double.tryParse(parts[0].trim());
+            final lng = double.tryParse(parts[1].trim());
 
-          if (lat != null && lng != null) {
-            // 优化：处理分贝数值的小数点
-            double rawDb = 0.0;
-            if (data['decibel'] != null) {
-              rawDb = double.tryParse(data['decibel'].toString()) ?? 0.0;
+            if (lat != null && lng != null) {
+              // Optimization: format decibel decimals
+              double rawDb = 0.0;
+              if (data['decibel'] != null) {
+                rawDb = double.tryParse(data['decibel'].toString()) ?? 0.0;
+              }
+
+              BitmapDescriptor markerIcon;
+              final int calories = (data['calories'] as num? ?? 0).toInt();
+              if (calories < 400) {
+                markerIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
+              } else if (calories < 700) {
+                markerIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange);
+              } else {
+                markerIcon = BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed);
+              }
+
+              tempMarkers.add(
+                Marker(
+                  markerId: MarkerId(doc.id),
+                  position: LatLng(lat, lng),
+                  infoWindow: InfoWindow(
+                    title: "${data['food_name']} (${data['calories']} Kcal)",
+                    snippet: "${rawDb.toStringAsFixed(1)} dB · ${_formatTimestamp(data['timestamp'])}",
+                  ),
+                  icon: markerIcon,
+                ),
+              );
             }
-
-            tempMarkers.add(
-              Marker(
-                markerId: MarkerId(doc.id),
-                position: LatLng(lat, lng),
-                infoWindow: InfoWindow(
-                  title: "${data['food_name']} (${data['calories']} Kcal)",
-                  snippet:
-                      "Ambient Noise: ${rawDb.toStringAsFixed(1)} dB", // 修正长长的小数点
-                ),
-                icon: BitmapDescriptor.defaultMarkerWithHue(
-                  BitmapDescriptor.hueGreen,
-                ),
-              ),
-            );
           }
         }
       }
@@ -82,22 +91,66 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  // 新功能：移动镜头到用户当前真实位置
+  // Feature: Move camera to user's current physical location with timeout and retry logic
   Future<void> _goToMyLocation() async {
     if (_mapController == null) return;
     try {
-      Position position = await Geolocator.getCurrentPosition();
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.deniedForever || permission == LocationPermission.denied) {
+        return;
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 5),
+        ),
+      );
       _mapController!.animateCamera(
         CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target: LatLng(position.latitude, position.longitude),
-            zoom: 15.0,
-          ),
+          CameraPosition(target: LatLng(position.latitude, position.longitude), zoom: 15.0),
         ),
       );
     } catch (e) {
-      debugPrint("Could not get location: $e");
+      debugPrint("Location timeout or error: $e. Trying last known position...");
+      // Fallback to last known position if timeout occurs
+      try {
+        Position? last = await Geolocator.getLastKnownPosition();
+        if (last != null && _mapController != null) {
+          _mapController!.animateCamera(
+            CameraUpdate.newCameraPosition(
+              CameraPosition(target: LatLng(last.latitude, last.longitude), zoom: 15.0),
+            ),
+          );
+        }
+      } catch (lastError) {
+        debugPrint("Could not even get last known position: $lastError");
+      }
     }
+  }
+
+  String _formatTimestamp(dynamic ts) {
+    if (ts is Timestamp) {
+      final dt = ts.toDate();
+      return "${dt.month}/${dt.day} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}";
+    }
+    return "";
+  }
+
+  Widget _legendItem(Color color, String label) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Container(width: 10, height: 10, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+          const SizedBox(width: 6),
+          Text(label, style: const TextStyle(fontSize: 11)),
+        ],
+      ),
+    );
   }
 
   @override
@@ -114,9 +167,10 @@ class _MapScreenState extends State<MapScreen> {
             zoomControlsEnabled: false,
             onMapCreated: (GoogleMapController controller) {
               _mapController = controller;
+              _goToMyLocation();
             },
           ),
-          // 顶部加个渐变遮罩，让时间栏更好看
+          // Top gradient mask for a better looking status bar
           Container(
             height: 100,
             decoration: BoxDecoration(
@@ -127,9 +181,33 @@ class _MapScreenState extends State<MapScreen> {
               ),
             ),
           ),
+          Positioned(
+            bottom: 100,
+            left: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [BoxShadow(color: Colors.black.withAlpha(20), blurRadius: 8)],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text("Calories",
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+                  const SizedBox(height: 4),
+                  _legendItem(Colors.green, "< 400 Kcal"),
+                  _legendItem(Colors.orange, "400–700 Kcal"),
+                  _legendItem(Colors.red, "> 700 Kcal"),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
-      // 定位按钮和刷新按钮
+      // Location and refresh buttons
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 80),
         child: Column(

@@ -44,7 +44,7 @@ class JournalScreen extends StatelessWidget {
             ),
           );
 
-          // 按日期分组
+          // Group by date
           Map<String, List<QueryDocumentSnapshot>> grouped = {};
           for (var doc in meals) {
             final data = doc.data() as Map<String, dynamic>;

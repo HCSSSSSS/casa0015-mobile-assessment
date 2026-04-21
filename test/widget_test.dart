@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 
 void main() {
   testWidgets('App smoke test', (WidgetTester tester) async {
-    // 因为主程序使用了 Provider，测试环境也需要包装 Provider
+    // Wrap with Provider for testing environment
     await tester.pumpWidget(
       MultiProvider(
         providers: [
@@ -15,7 +15,7 @@ void main() {
       ),
     );
 
-    // 验证主界面是否加载了关键词
+    // Verify main UI loads keywords
     expect(find.text('Kcal Left'), findsOneWidget);
   });
 }

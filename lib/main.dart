@@ -21,9 +21,7 @@ import 'screens/journal_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
   await dotenv.load(fileName: ".env");
-
   await Firebase.initializeApp();
 
   runApp(
@@ -57,11 +55,14 @@ class SenseFoodApp extends StatelessWidget {
             );
           }
           if (snapshot.hasData) {
+            // Re-fetch user preferences after login
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (context.mounted) {
+                context.read<SensorProvider>().refreshOnAuthChange();
+              }
+            });
             return FutureBuilder<DocumentSnapshot>(
-              future: FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(snapshot.data!.uid)
-                  .get(),
+              future: FirebaseFirestore.instance.collection('users').doc(snapshot.data!.uid).get(),
               builder: (context, userSnapshot) {
                 if (userSnapshot.connectionState == ConnectionState.waiting) {
                   return const Scaffold(body: Center(child: CircularProgressIndicator(color: Colors.green)));
@@ -97,38 +98,51 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
     if (photo != null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Analyzing your food... ⏳"),
-          duration: Duration(seconds: 3),
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => Center(
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.all(Radius.circular(16)),
+            ),
+            child: const Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: Colors.green),
+                SizedBox(height: 16),
+                Text("Analyzing your food...",
+                    style: TextStyle(fontSize: 15, decoration: TextDecoration.none, color: Colors.black87)),
+                SizedBox(height: 4),
+                Text("Powered by Gemini AI ✨",
+                    style: TextStyle(fontSize: 12, decoration: TextDecoration.none, color: Colors.grey)),
+              ],
+            ),
+          ),
         ),
       );
 
       File imageFile = File(photo.path);
       final result = await AIService.analyzeFood(imageFile);
 
-      // 安全检查 1: AI 分析之后
       if (!mounted) return;
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      Navigator.of(context).pop();
 
       if (result != null) {
         try {
-          String cleanJson = result
-              .replaceAll('```json', '')
-              .replaceAll('```', '')
-              .trim();
+          String cleanJson = result.replaceAll('```json', '').replaceAll('```', '').trim();
           final foodData = jsonDecode(cleanJson);
 
           showModalBottomSheet(
             context: context,
             isScrollControlled: true,
             backgroundColor: Colors.transparent,
-            builder: (context) {
-              return _buildResultBottomSheet(context, foodData);
-            },
+            builder: (context) => _buildResultBottomSheet(context, foodData),
           );
         } catch (e) {
-          debugPrint("JSON Parse Error: $e\nRaw data: $result");
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text("Analysis format error, please try again. ❌")),
           );
@@ -138,6 +152,101 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           const SnackBar(content: Text("Analysis Failed. Check API Key or Network ❌")),
         );
       }
+    }
+  }
+
+  Future<void> _showDescribeDialog() async {
+    final TextEditingController descController = TextEditingController();
+
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("Describe Your Food", style: TextStyle(fontWeight: FontWeight.bold)),
+        content: TextField(
+          controller: descController,
+          maxLines: 3,
+          decoration: InputDecoration(
+            hintText: "e.g. A bowl of tomato beef noodles with 2 meatballs...",
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () async {
+              final desc = descController.text.trim();
+              if (desc.isEmpty) return;
+              Navigator.pop(context);
+              await _processDescription(desc);
+            },
+            child: const Text("Analyze", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _processDescription(String description) async {
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Center(
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.all(Radius.circular(16)),
+          ),
+          child: const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(color: Colors.green),
+              SizedBox(height: 16),
+              Text("Analyzing your food...",
+                  style: TextStyle(fontSize: 15, decoration: TextDecoration.none, color: Colors.black87)),
+              SizedBox(height: 4),
+              Text("Powered by Gemini AI ✨",
+                  style: TextStyle(fontSize: 12, decoration: TextDecoration.none, color: Colors.grey)),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final result = await AIService.analyzeFoodByText(description);
+
+    if (!mounted) return;
+    Navigator.of(context).pop();
+
+    if (result != null) {
+      try {
+        String cleanJson = result.replaceAll('```json', '').replaceAll('```', '').trim();
+        final foodData = jsonDecode(cleanJson);
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (context) => _buildResultBottomSheet(context, foodData),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Analysis format error, please try again. ❌")),
+        );
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Analysis Failed. Check API Key or Network ❌")),
+      );
     }
   }
 
@@ -181,6 +290,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                         _processImage(ImageSource.gallery);
                       },
                     ),
+                    ListTile(
+                      leading: const Icon(Icons.edit_note, color: Colors.purple),
+                      title: const Text('Describe Food'),
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _showDescribeDialog();
+                      },
+                    ),
                   ],
                 ),
               );
@@ -209,7 +326,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             ),
             const SizedBox(width: 40),
             IconButton(
-              icon: Icon(Icons.book_outlined, color: _selectedIndex == 2 ? Colors.green : Colors.grey),
+              icon: Icon(Icons.history, color: _selectedIndex == 2 ? Colors.green : Colors.grey),
               onPressed: () => setState(() => _selectedIndex = 2),
             ),
             IconButton(
@@ -224,64 +341,70 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   Widget _buildResultBottomSheet(BuildContext context, Map<String, dynamic> foodData) {
     return Container(
-      height: MediaQuery.of(context).size.height * 0.70,
       padding: const EdgeInsets.all(24),
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Center(
-            child: Container(width: 40, height: 5, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(10))),
-          ),
-          const SizedBox(height: 20),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text("AI Vision Result", style: TextStyle(color: Colors.green.shade700, fontWeight: FontWeight.bold, fontSize: 16)),
-              const Icon(Icons.verified, color: Colors.green),
+              Expanded(
+                child: Text(foodData['food_name'] ?? "Unknown Food",
+                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF2E3E2E))),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(20)),
+                child: Text("Score: ${foodData['health_score']}/10",
+                    style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+              ),
             ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            "${foodData['food_name']}",
-            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 20),
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(color: Colors.orange.shade50, shape: BoxShape.circle),
-                child: Text("${foodData['calories']}", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.orange.shade800)),
-              ),
-              const SizedBox(width: 20),
-              const Text("Kcal\nEstimated", style: TextStyle(fontSize: 16, color: Colors.grey)),
+              _buildNutrientInfo("Calories", "${foodData['calories']}", "Kcal", Colors.orange),
+              _buildNutrientInfo("Protein", "${foodData['protein']}g", "Daily", Colors.blue),
+              _buildNutrientInfo("Carbs", "${foodData['carbs']}g", "Daily", Colors.green),
             ],
           ),
+          const SizedBox(height: 25),
+          const Text("Nutritional Breakdown", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 15),
+          _bottomSheetNutrientBar("Protein", (foodData['protein'] / 50).toDouble().clamp(0, 1), Colors.blue, "${foodData['protein']}g"),
+          _bottomSheetNutrientBar("Carbs", (foodData['carbs'] / 200).toDouble().clamp(0, 1), Colors.green, "${foodData['carbs']}g"),
+          _bottomSheetNutrientBar("Fat", (foodData['fat'] / 70).toDouble().clamp(0, 1), Colors.orange, "${foodData['fat']}g"),
           const SizedBox(height: 30),
-          _bottomSheetNutrientBar("Protein", (foodData['protein'] / 100).toDouble().clamp(0.0, 1.0), Colors.green, "${foodData['protein']}g"),
-          _bottomSheetNutrientBar("Carbs", (foodData['carbs'] / 100).toDouble().clamp(0.0, 1.0), Colors.orange, "${foodData['carbs']}g"),
-          _bottomSheetNutrientBar("Fat", (foodData['fat'] / 100).toDouble().clamp(0.0, 1.0), Colors.yellow.shade700, "${foodData['fat']}g"),
-          const Spacer(),
           SizedBox(
             width: double.infinity,
+            height: 55,
             child: ElevatedButton(
+              onPressed: () => _handleLogMeal(context, foodData),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
-                padding: const EdgeInsets.symmetric(vertical: 15),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                elevation: 0,
               ),
-              onPressed: () async => _handleLogMeal(context, foodData),
               child: const Text("Log This Meal", style: TextStyle(fontSize: 16, color: Colors.white, fontWeight: FontWeight.bold)),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildNutrientInfo(String label, String value, String unit, Color color) {
+    return Column(
+      children: [
+        Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color)),
+        Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+      ],
     );
   }
 
@@ -494,8 +617,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _sensorCard(context, "Ambient Noise", "${sensorProvider.decibel.toStringAsFixed(1)} dB", Icons.graphic_eq, Colors.orange),
-                _sensorCard(context, "Spatial Context", sensorProvider.location, Icons.location_on, Colors.blue),
+                Flexible(
+                    child: _sensorCard(context, "Ambient Noise",
+                        "${sensorProvider.decibel.toStringAsFixed(1)} dB", Icons.graphic_eq, Colors.orange)),
+                const SizedBox(width: 12),
+                Flexible(
+                    child: _sensorCard(context, "Spatial Context", sensorProvider.location, Icons.location_on,
+                        Colors.blue)),
               ],
             ),
           ),
