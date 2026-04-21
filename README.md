@@ -86,20 +86,16 @@ flutter run
 ---
 
 ## 📁 Project Structure
-lib/
-├── main.dart              # App entry, navigation, dashboard
-├── providers/
-│   └── sensor_provider.dart   # Global state: sensors, calories, nutrients
-├── screens/
-│   ├── login_screen.dart      # Sign in / Register
-│   ├── onboarding_screen.dart # First-time setup
-│   ├── map_screen.dart        # Meal map
-│   ├── journal_screen.dart    # Meal history
-│   └── settings_screen.dart  # Profile & goals
-└── service/
-├── ai_service.dart        # Gemini API integration
-└── database_service.dart  # Firestore read/write
 
+- `lib/main.dart` — App entry, navigation, dashboard
+- `lib/providers/sensor_provider.dart` — Global state: sensors, calories, nutrients
+- `lib/screens/login_screen.dart` — Sign in / Register
+- `lib/screens/onboarding_screen.dart` — First-time setup
+- `lib/screens/map_screen.dart` — Meal map
+- `lib/screens/journal_screen.dart` — Meal history
+- `lib/screens/settings_screen.dart` — Profile & goals
+- `lib/service/ai_service.dart` — Gemini API integration
+- `lib/service/database_service.dart` — Firestore read/write
 ---
 
 ## 🔒 Security
