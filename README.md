@@ -2,7 +2,7 @@
 
 > Connect your diet with your physical environment.
 
-SenseFood is a Flutter mobile application developed for CASA0015: Mobile Systems & Interactions. It bridges the gap between nutrition tracking and ambient environmental sensing — when you log a meal, the app simultaneously captures your location and ambient noise level, creating a rich picture of *where* and *how* you eat.
+SenseFood is a Flutter mobile application developed for CASA0015: Mobile Systems & Interactions. It bridges the gap between nutrition tracking and ambient environmental sensing — when you log a meal, the app simultaneously captures your location and ambient noise level, creating a rich picture of **where** and **how** you eat.
 
 ---
 
@@ -12,17 +12,17 @@ SenseFood is a Flutter mobile application developed for CASA0015: Mobile Systems
 
 ---
 
+
 ## ✨ Features
 
-- **AI Food Recognition** — Snap a photo or describe your meal; Gemini 2.5 Flash returns calories, protein, carbs, and fat in seconds
-- **Ambient Sensing** — Microphone captures real-time decibel levels; GPS records your location at the moment of eating
-- **Calorie Dashboard** — Custom-painted progress ring with weekly calendar; tap any date to see that day's data
-- **Monthly Heat Map** — Switch to month view; days glow green based on calorie intake intensity
-- **Meal Map** — Google Maps view of every meal you've logged, colour-coded by calorie level
-- **My Journal** — Chronological history of all meals grouped by date, with noise and location context
-- **Personalised Goals** — Onboarding flow collects weight, age, and daily calorie target; synced to Firebase
-- **Secure & Cross-device** — Firebase Auth + Firestore; data follows you across devices
-
+- **AI Vision Analysis** — Photo or text input via Gemini 2.5 Flash multimodal API; returns calories, protein, carbs and fat
+- **Connected Environment Sensing** — Real-time acoustic (dB) and spatial (GPS) data captured and stored at every meal
+- **Ambient-Aware Dashboard** — Calorie progress ring with environmental feedback, noise advice, and interactive calendar
+- **Monthly Heat Map** — Calorie intake intensity visualised across the full month via custom calendar builders
+- **Meal Map** — Google Maps markers colour-coded by calorie level; click to view food name, noise and timestamp
+- **My Journal** — Chronological meal history grouped by date, with decibel and location context per entry
+- **Personalised Goals** — Onboarding captures weight, age and daily calorie target; synced to Firestore
+- **Secure & Cross-device** — Firebase Auth + Firestore cloud persistence; API keys protected via `.env`
 ---
 
 ## 🛠 Tech Stack
