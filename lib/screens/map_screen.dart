@@ -3,6 +3,8 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:provider/provider.dart';
+import '../providers/sensor_provider.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -93,7 +95,7 @@ class _MapScreenState extends State<MapScreen> {
     if (_mapController == null) return;
     try {
       LocationPermission permission = await Geolocator.checkPermission();
-      // 不再调 requestPermission，只检查
+      // No longer calling requestPermission here, only checking status
       if (permission == LocationPermission.deniedForever ||
           permission == LocationPermission.denied) {
         debugPrint("Location permission not granted, skipping.");
@@ -151,79 +153,89 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
-        children: [
-          GoogleMap(
-            mapType: MapType.normal,
-            initialCameraPosition: _initialPosition,
-            markers: _markers,
-            myLocationEnabled: true,
-            myLocationButtonEnabled: false,
-            zoomControlsEnabled: false,
-            onMapCreated: (GoogleMapController controller) {
-              _mapController = controller;
-              _goToMyLocation();
-            },
-          ),
-          Container(
-            height: 100,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.white.withAlpha(200), Colors.transparent],
+    return Consumer<SensorProvider>(
+      builder: (context, sensorProvider, child) {
+        final hasPermission = sensorProvider.isPermissionGranted;
+
+        return Scaffold(
+          body: Stack(
+            children: [
+              GoogleMap(
+                key: ValueKey('map_$hasPermission'), // Force rebuild when permission changes
+                mapType: MapType.normal,
+                initialCameraPosition: _initialPosition,
+                markers: _markers,
+                myLocationEnabled: hasPermission,
+                myLocationButtonEnabled: false,
+                zoomControlsEnabled: false,
+                onMapCreated: (GoogleMapController controller) {
+                  _mapController = controller;
+                  if (hasPermission) {
+                    _goToMyLocation();
+                  }
+                },
               ),
+              Container(
+                height: 100,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.white.withAlpha(200), Colors.transparent],
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: 100,
+                left: 16,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [BoxShadow(color: Colors.black.withAlpha(20), blurRadius: 8)],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text("Calories",
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+                      const SizedBox(height: 4),
+                      _legendItem(Colors.green, "< 400 Kcal"),
+                      _legendItem(Colors.orange, "400–700 Kcal"),
+                      _legendItem(Colors.red, "> 700 Kcal"),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          floatingActionButton: Padding(
+            padding: const EdgeInsets.only(bottom: 80),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                FloatingActionButton(
+                  heroTag: "refresh_btn",
+                  backgroundColor: Colors.white,
+                  onPressed: _loadHistoricalMeals,
+                  mini: true,
+                  child: const Icon(Icons.refresh, color: Colors.green),
+                ),
+                const SizedBox(height: 10),
+                FloatingActionButton(
+                  heroTag: "location_btn",
+                  backgroundColor: Colors.white,
+                  onPressed: _goToMyLocation,
+                  child: const Icon(Icons.my_location, color: Colors.green),
+                ),
+              ],
             ),
           ),
-          Positioned(
-            bottom: 100,
-            left: 16,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [BoxShadow(color: Colors.black.withAlpha(20), blurRadius: 8)],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text("Calories", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
-                  const SizedBox(height: 4),
-                  _legendItem(Colors.green, "< 400 Kcal"),
-                  _legendItem(Colors.orange, "400–700 Kcal"),
-                  _legendItem(Colors.red, "> 700 Kcal"),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 80),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            FloatingActionButton(
-              heroTag: "refresh_btn",
-              backgroundColor: Colors.white,
-              onPressed: _loadHistoricalMeals,
-              mini: true,
-              child: const Icon(Icons.refresh, color: Colors.green),
-            ),
-            const SizedBox(height: 10),
-            FloatingActionButton(
-              heroTag: "location_btn",
-              backgroundColor: Colors.white,
-              onPressed: _goToMyLocation,
-              child: const Icon(Icons.my_location, color: Colors.green),
-            ),
-          ],
-        ),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        );
+      },
     );
   }
 }

@@ -45,7 +45,7 @@ class SensorProvider with ChangeNotifier {
 
   SensorProvider() {
     _fetchUserPreferences(); // Fetch user settings from cloud on initialization
-    // 不再在构造函数中调用 initSensors
+    // initSensors is no longer called in constructor
   }
 
   // --- Database Interaction Logic ---
@@ -109,7 +109,7 @@ class SensorProvider with ChangeNotifier {
     _fat = 0;
     notifyListeners();
 
-    // 只有在从未成功初始化过的情况下才调用 initSensors
+    // Only call initSensors if it has never been successfully initialized
     if (!_hasInitialized) {
       await initSensors();
     }
@@ -121,7 +121,7 @@ class SensorProvider with ChangeNotifier {
   // --- Physical Sensor Interaction Logic ---
 
   Future<void> initSensors() async {
-    // 防止并发调用
+    // Prevent concurrent calls
     if (_isInitializing) {
       debugPrint("initSensors already in progress, skipping.");
       return;
@@ -129,7 +129,7 @@ class SensorProvider with ChangeNotifier {
     _isInitializing = true;
 
     try {
-      // 先检查当前状态，避免已授权的情况下重复弹框
+      // Check current status first to avoid redundant popups if already granted
       final micStatus = await Permission.microphone.status;
       final locStatus = await Permission.location.status;
 
@@ -160,7 +160,7 @@ class SensorProvider with ChangeNotifier {
       notifyListeners();
     } catch (e) {
       debugPrint("initSensors error: $e");
-      // 即使权限请求抛异常，也尝试直接启动 stream——系统层可能已经授权
+      // Even if permission request fails, try starting streams directly - system may have authorized
       try {
         _startNoiseListening();
         _startLocationListening();

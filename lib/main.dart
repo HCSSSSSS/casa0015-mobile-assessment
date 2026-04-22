@@ -58,7 +58,7 @@ class SenseFoodApp extends StatelessWidget {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (context.mounted) {
                 final provider = context.read<SensorProvider>();
-                // 先初始化传感器（幂等，重复调用安全），再刷新用户数据
+                // Initialize sensors first (idempotent, safe to repeat), then refresh user data
                 provider.initSensors().then((_) {
                   if (context.mounted) {
                     provider.refreshOnAuthChange();
