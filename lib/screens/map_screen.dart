@@ -14,7 +14,7 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   GoogleMapController? _mapController;
   final Set<Marker> _markers = {};
-  bool _locationPermissionGranted = false;
+  bool _mapReadyForMyLocation = false;
 
   // Default initial position
   static const CameraPosition _initialPosition = CameraPosition(
@@ -25,18 +25,33 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
-    _checkLocationPermission();
     _loadHistoricalMeals();
   }
 
-  Future<void> _checkLocationPermission() async {
+  Future<void> _initLocationForMap() async {
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
     }
-    if (permission == LocationPermission.whileInUse ||
-        permission == LocationPermission.always) {
-      setState(() => _locationPermissionGranted = true);
+    if (permission == LocationPermission.deniedForever) return;
+
+    // Wait for the first position before enabling the blue dot
+    try {
+      await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 5),
+        ),
+      );
+      await Future.delayed(const Duration(milliseconds: 200));
+      if (mounted) setState(() => _mapReadyForMyLocation = true);
+      _goToMyLocation();
+    } catch (e) {
+      Position? last = await Geolocator.getLastKnownPosition();
+      if (last != null && mounted) {
+        setState(() => _mapReadyForMyLocation = true);
+        _goToMyLocation();
+      }
     }
   }
 
@@ -108,14 +123,6 @@ class _MapScreenState extends State<MapScreen> {
   Future<void> _goToMyLocation() async {
     if (_mapController == null) return;
     try {
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.deniedForever || permission == LocationPermission.denied) {
-        return;
-      }
-
       Position position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
@@ -129,7 +136,6 @@ class _MapScreenState extends State<MapScreen> {
       );
     } catch (e) {
       debugPrint("Location timeout or error: $e. Trying last known position...");
-      // Fallback to last known position if timeout occurs
       try {
         Position? last = await Geolocator.getLastKnownPosition();
         if (last != null && _mapController != null) {
@@ -175,13 +181,12 @@ class _MapScreenState extends State<MapScreen> {
             mapType: MapType.normal,
             initialCameraPosition: _initialPosition,
             markers: _markers,
-            myLocationEnabled: _locationPermissionGranted,
+            myLocationEnabled: _mapReadyForMyLocation,
             myLocationButtonEnabled: false,
             zoomControlsEnabled: false,
             onMapCreated: (GoogleMapController controller) {
               _mapController = controller;
-              // Add a small delay to ensure the controller is fully ready
-              Future.delayed(const Duration(milliseconds: 500), _goToMyLocation);
+              _initLocationForMap();
             },
           ),
           // Top gradient mask for a better looking status bar
