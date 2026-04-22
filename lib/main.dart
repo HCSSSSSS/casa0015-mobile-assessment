@@ -55,10 +55,15 @@ class SenseFoodApp extends StatelessWidget {
             );
           }
           if (snapshot.hasData) {
-            // Re-fetch user preferences after login
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (context.mounted) {
-                context.read<SensorProvider>().refreshOnAuthChange();
+                final provider = context.read<SensorProvider>();
+                // 先初始化传感器（幂等，重复调用安全），再刷新用户数据
+                provider.initSensors().then((_) {
+                  if (context.mounted) {
+                    provider.refreshOnAuthChange();
+                  }
+                });
               }
             });
             return FutureBuilder<DocumentSnapshot>(
@@ -135,7 +140,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         try {
           String cleanJson = result.replaceAll('```json', '').replaceAll('```', '').trim();
           
-          // Extract content between first '{' and last '}' to handle extra text from AI
           final start = cleanJson.indexOf('{');
           final end = cleanJson.lastIndexOf('}');
           if (start != -1 && end != -1) {
@@ -240,7 +244,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       try {
         String cleanJson = result.replaceAll('```json', '').replaceAll('```', '').trim();
         
-        // Extract content between first '{' and last '}' to handle extra text from AI
         final start = cleanJson.indexOf('{');
         final end = cleanJson.lastIndexOf('}');
         if (start != -1 && end != -1) {

@@ -40,16 +40,17 @@ class SensorProvider with ChangeNotifier {
   StreamSubscription<Position>? _locationSubscription;
   DateTime _lastNoiseUpdate = DateTime.now();
 
+  bool _isInitializing = false;
+  bool _hasInitialized = false;
+
   SensorProvider() {
-    initSensors();
     _fetchUserPreferences(); // Fetch user settings from cloud on initialization
+    // 不再在构造函数中调用 initSensors
   }
 
   // --- Database Interaction Logic ---
 
-  // Core upgrade: Pull user-specific settings (e.g., their self-defined calorie target) from cloud
   Future<void> _fetchUserPreferences() async {
-    // Reset to default values first
     _totalCaloriesTarget = 2000;
     _consumedCalories = 0;
     _protein = 0;
@@ -62,7 +63,6 @@ class SensorProvider with ChangeNotifier {
       try {
         final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
         if (doc.exists && doc.data()!.containsKey('target_calories')) {
-          // If cloud data exists, overwrite default 2000
           _totalCaloriesTarget = (doc.data()!['target_calories'] as num).toInt();
           notifyListeners();
           debugPrint("⚙️ Synced target calories from cloud: $_totalCaloriesTarget Kcal");
@@ -73,7 +73,6 @@ class SensorProvider with ChangeNotifier {
     }
   }
 
-  // Called by settings page to modify memory target (cloud writing logic is in SettingsScreen)
   void updateTargetCalories(int newTarget) {
     if (newTarget > 0) {
       _totalCaloriesTarget = newTarget;
@@ -81,7 +80,6 @@ class SensorProvider with ChangeNotifier {
     }
   }
 
-  // Refresh calorie data for a specific date (read from Firestore, triggered by calendar click)
   Future<void> refreshDataForDate(DateTime date) async {
     try {
       int cloudCalories = await DatabaseService.getConsumedCaloriesForDate(date);
@@ -93,23 +91,17 @@ class SensorProvider with ChangeNotifier {
       _fat = nutrients['fat']!;
 
       notifyListeners();
-      debugPrint("🔄 Refreshed calories for ${date.toIso8601String()}: $cloudCalories Kcal, Nutrients: $nutrients");
     } catch (e) {
       debugPrint("Failed to refresh data: $e");
     }
   }
 
-  // Log meal just eaten (temporary increase after photo/text, waiting for next cloud pull)
   void logMeal(int calories) {
     _consumedCalories += calories;
     notifyListeners();
   }
 
   Future<void> refreshOnAuthChange() async {
-    // Stop current sensors to prevent conflicts
-    await _noiseSubscription?.cancel();
-    await _locationSubscription?.cancel();
-
     _totalCaloriesTarget = 2000;
     _consumedCalories = 0;
     _protein = 0;
@@ -117,8 +109,11 @@ class SensorProvider with ChangeNotifier {
     _fat = 0;
     notifyListeners();
 
-    // Re-initialize for new user
-    await initSensors();
+    // 只有在从未成功初始化过的情况下才调用 initSensors
+    if (!_hasInitialized) {
+      await initSensors();
+    }
+
     await _fetchUserPreferences();
     await refreshDataForDate(DateTime.now());
   }
@@ -126,24 +121,61 @@ class SensorProvider with ChangeNotifier {
   // --- Physical Sensor Interaction Logic ---
 
   Future<void> initSensors() async {
-    Map<Permission, PermissionStatus> statuses = await [
-      Permission.microphone,
-      Permission.location,
-    ].request();
-
-    if (statuses[Permission.microphone]!.isGranted &&
-        statuses[Permission.location]!.isGranted) {
-      _isPermissionGranted = true;
-      _startNoiseListening();
-      _startLocationListening();
-    } else {
-      _isPermissionGranted = false;
-      _location = "Permission Denied";
+    // 防止并发调用
+    if (_isInitializing) {
+      debugPrint("initSensors already in progress, skipping.");
+      return;
     }
-    notifyListeners();
+    _isInitializing = true;
+
+    try {
+      // 先检查当前状态，避免已授权的情况下重复弹框
+      final micStatus = await Permission.microphone.status;
+      final locStatus = await Permission.location.status;
+
+      Map<Permission, PermissionStatus> statuses;
+      if (micStatus.isGranted && locStatus.isGranted) {
+        statuses = {
+          Permission.microphone: micStatus,
+          Permission.location: locStatus,
+        };
+      } else {
+        statuses = await [
+          Permission.microphone,
+          Permission.location,
+        ].request();
+      }
+
+      if (statuses[Permission.microphone]!.isGranted &&
+          statuses[Permission.location]!.isGranted) {
+        _isPermissionGranted = true;
+        await Future.delayed(const Duration(milliseconds: 300));
+        _startNoiseListening();
+        _startLocationListening();
+      } else {
+        _isPermissionGranted = false;
+        _location = "Permission Denied";
+      }
+      _hasInitialized = true;
+      notifyListeners();
+    } catch (e) {
+      debugPrint("initSensors error: $e");
+      // 即使权限请求抛异常，也尝试直接启动 stream——系统层可能已经授权
+      try {
+        _startNoiseListening();
+        _startLocationListening();
+        _isPermissionGranted = true;
+        notifyListeners();
+      } catch (e2) {
+        debugPrint("Fallback stream start failed: $e2");
+      }
+    } finally {
+      _isInitializing = false;
+    }
   }
 
   void _startNoiseListening() {
+    if (_noiseSubscription != null) return;
     try {
       _noiseMeter = NoiseMeter();
       _noiseSubscription = _noiseMeter?.noise.listen((reading) {
@@ -160,6 +192,7 @@ class SensorProvider with ChangeNotifier {
   }
 
   void _startLocationListening() {
+    if (_locationSubscription != null) return;
     try {
       _locationSubscription = Geolocator.getPositionStream(
         locationSettings: const LocationSettings(
@@ -170,7 +203,6 @@ class SensorProvider with ChangeNotifier {
         _location = "${position.latitude.toStringAsFixed(3)}, ${position.longitude.toStringAsFixed(3)}";
         notifyListeners();
 
-        // Reverse geocoding
         try {
           List<Placemark> placemarks = await placemarkFromCoordinates(
             position.latitude,

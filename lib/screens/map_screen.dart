@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:geolocator/geolocator.dart'; // Location package
+import 'package:geolocator/geolocator.dart';
 
 class MapScreen extends StatefulWidget {
   const MapScreen({super.key});
@@ -14,7 +14,6 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   GoogleMapController? _mapController;
   final Set<Marker> _markers = {};
-  bool _hasLocationPermission = false;
 
   static const CameraPosition _initialPosition = CameraPosition(
     target: LatLng(51.5246, -0.1340),
@@ -24,23 +23,7 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
-    _checkPermissionAndInitMap();
-  }
-
-  Future<void> _checkPermissionAndInitMap() async {
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-
-    if (permission == LocationPermission.always ||
-        permission == LocationPermission.whileInUse) {
-      if (mounted) setState(() => _hasLocationPermission = true);
-      await _loadHistoricalMeals();
-    } else {
-      if (mounted) setState(() => _hasLocationPermission = false);
-      await _loadHistoricalMeals();
-    }
+    _loadHistoricalMeals();
   }
 
   Future<void> _loadHistoricalMeals() async {
@@ -109,6 +92,14 @@ class _MapScreenState extends State<MapScreen> {
   Future<void> _goToMyLocation() async {
     if (_mapController == null) return;
     try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      // 不再调 requestPermission，只检查
+      if (permission == LocationPermission.deniedForever ||
+          permission == LocationPermission.denied) {
+        debugPrint("Location permission not granted, skipping.");
+        return;
+      }
+
       Position position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
@@ -116,8 +107,9 @@ class _MapScreenState extends State<MapScreen> {
         ),
       );
       _mapController!.animateCamera(
-        CameraUpdate.newCameraPosition(
-          CameraPosition(target: LatLng(position.latitude, position.longitude), zoom: 15.0),
+        CameraUpdate.newLatLngZoom(
+          LatLng(position.latitude, position.longitude),
+          16.0,
         ),
       );
     } catch (e) {
@@ -126,14 +118,13 @@ class _MapScreenState extends State<MapScreen> {
         Position? last = await Geolocator.getLastKnownPosition();
         if (last != null && _mapController != null) {
           _mapController!.animateCamera(
-            CameraUpdate.newCameraPosition(
-              CameraPosition(target: LatLng(last.latitude, last.longitude), zoom: 15.0),
+            CameraUpdate.newLatLngZoom(
+              LatLng(last.latitude, last.longitude),
+              16.0,
             ),
           );
         }
-      } catch (lastError) {
-        debugPrint("Could not even get last known position: $lastError");
-      }
+      } catch (_) {}
     }
   }
 
@@ -167,26 +158,12 @@ class _MapScreenState extends State<MapScreen> {
             mapType: MapType.normal,
             initialCameraPosition: _initialPosition,
             markers: _markers,
-            myLocationEnabled: _hasLocationPermission,
+            myLocationEnabled: true,
             myLocationButtonEnabled: false,
             zoomControlsEnabled: false,
             onMapCreated: (GoogleMapController controller) {
               _mapController = controller;
-              if (_hasLocationPermission) {
-                Future.delayed(const Duration(milliseconds: 500), () {
-                  if (mounted && _mapController != null) {
-                    _mapController!.animateCamera(
-                      CameraUpdate.newLatLng(
-                        LatLng(
-                          _initialPosition.target.latitude + 0.000001,
-                          _initialPosition.target.longitude,
-                        ),
-                      ),
-                    );
-                    _goToMyLocation();
-                  }
-                });
-              }
+              _goToMyLocation();
             },
           ),
           Container(
@@ -213,8 +190,7 @@ class _MapScreenState extends State<MapScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text("Calories",
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
+                  const Text("Calories", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
                   const SizedBox(height: 4),
                   _legendItem(Colors.green, "< 400 Kcal"),
                   _legendItem(Colors.orange, "400–700 Kcal"),
