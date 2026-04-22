@@ -167,7 +167,8 @@ class _MapScreenState extends State<MapScreen> {
             zoomControlsEnabled: false,
             onMapCreated: (GoogleMapController controller) {
               _mapController = controller;
-              _goToMyLocation();
+              // Add a small delay to ensure the controller is fully ready
+              Future.delayed(const Duration(milliseconds: 500), _goToMyLocation);
             },
           ),
           // Top gradient mask for a better looking status bar

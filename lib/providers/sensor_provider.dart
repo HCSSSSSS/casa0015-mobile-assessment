@@ -106,12 +106,19 @@ class SensorProvider with ChangeNotifier {
   }
 
   Future<void> refreshOnAuthChange() async {
+    // Stop current sensors to prevent conflicts
+    await _noiseSubscription?.cancel();
+    await _locationSubscription?.cancel();
+
     _totalCaloriesTarget = 2000;
     _consumedCalories = 0;
     _protein = 0;
     _carbs = 0;
     _fat = 0;
     notifyListeners();
+
+    // Re-initialize for new user
+    await initSensors();
     await _fetchUserPreferences();
     await refreshDataForDate(DateTime.now());
   }
