@@ -14,9 +14,8 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   GoogleMapController? _mapController;
   final Set<Marker> _markers = {};
-  bool _mapReadyForMyLocation = false;
+  bool _hasLocationPermission = false;
 
-  // Default initial position
   static const CameraPosition _initialPosition = CameraPosition(
     target: LatLng(51.5246, -0.1340),
     zoom: 12.0,
@@ -25,33 +24,22 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
-    _loadHistoricalMeals();
+    _checkPermissionAndInitMap();
   }
 
-  Future<void> _initLocationForMap() async {
+  Future<void> _checkPermissionAndInitMap() async {
     LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
     }
-    if (permission == LocationPermission.deniedForever) return;
 
-    // Wait for the first position before enabling the blue dot
-    try {
-      await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 5),
-        ),
-      );
-      await Future.delayed(const Duration(milliseconds: 200));
-      if (mounted) setState(() => _mapReadyForMyLocation = true);
-      _goToMyLocation();
-    } catch (e) {
-      Position? last = await Geolocator.getLastKnownPosition();
-      if (last != null && mounted) {
-        setState(() => _mapReadyForMyLocation = true);
-        _goToMyLocation();
-      }
+    if (permission == LocationPermission.always ||
+        permission == LocationPermission.whileInUse) {
+      if (mounted) setState(() => _hasLocationPermission = true);
+      await _loadHistoricalMeals();
+    } else {
+      if (mounted) setState(() => _hasLocationPermission = false);
+      await _loadHistoricalMeals();
     }
   }
 
@@ -78,7 +66,6 @@ class _MapScreenState extends State<MapScreen> {
             final lng = double.tryParse(parts[1].trim());
 
             if (lat != null && lng != null) {
-              // Optimization: format decibel decimals
               double rawDb = 0.0;
               if (data['decibel'] != null) {
                 rawDb = double.tryParse(data['decibel'].toString()) ?? 0.0;
@@ -119,7 +106,6 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  // Feature: Move camera to user's current physical location with timeout and retry logic
   Future<void> _goToMyLocation() async {
     if (_mapController == null) return;
     try {
@@ -181,15 +167,28 @@ class _MapScreenState extends State<MapScreen> {
             mapType: MapType.normal,
             initialCameraPosition: _initialPosition,
             markers: _markers,
-            myLocationEnabled: _mapReadyForMyLocation,
+            myLocationEnabled: _hasLocationPermission,
             myLocationButtonEnabled: false,
             zoomControlsEnabled: false,
             onMapCreated: (GoogleMapController controller) {
               _mapController = controller;
-              _initLocationForMap();
+              if (_hasLocationPermission) {
+                Future.delayed(const Duration(milliseconds: 500), () {
+                  if (mounted && _mapController != null) {
+                    _mapController!.animateCamera(
+                      CameraUpdate.newLatLng(
+                        LatLng(
+                          _initialPosition.target.latitude + 0.000001,
+                          _initialPosition.target.longitude,
+                        ),
+                      ),
+                    );
+                    _goToMyLocation();
+                  }
+                });
+              }
             },
           ),
-          // Top gradient mask for a better looking status bar
           Container(
             height: 100,
             decoration: BoxDecoration(
@@ -226,7 +225,6 @@ class _MapScreenState extends State<MapScreen> {
           ),
         ],
       ),
-      // Location and refresh buttons
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 80),
         child: Column(
