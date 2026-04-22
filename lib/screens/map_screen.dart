@@ -14,6 +14,7 @@ class MapScreen extends StatefulWidget {
 class _MapScreenState extends State<MapScreen> {
   GoogleMapController? _mapController;
   final Set<Marker> _markers = {};
+  bool _locationPermissionGranted = false;
 
   // Default initial position
   static const CameraPosition _initialPosition = CameraPosition(
@@ -24,7 +25,19 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
+    _checkLocationPermission();
     _loadHistoricalMeals();
+  }
+
+  Future<void> _checkLocationPermission() async {
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.whileInUse ||
+        permission == LocationPermission.always) {
+      setState(() => _locationPermissionGranted = true);
+    }
   }
 
   Future<void> _loadHistoricalMeals() async {
@@ -162,7 +175,7 @@ class _MapScreenState extends State<MapScreen> {
             mapType: MapType.normal,
             initialCameraPosition: _initialPosition,
             markers: _markers,
-            myLocationEnabled: true,
+            myLocationEnabled: _locationPermissionGranted,
             myLocationButtonEnabled: false,
             zoomControlsEnabled: false,
             onMapCreated: (GoogleMapController controller) {

@@ -32,7 +32,8 @@ class AIService {
         }
       ''');
 
-      final imageParts = [DataPart('image/jpeg', imageBytes)];
+      String mimeType = imageFile.path.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+      final imageParts = [DataPart(mimeType, imageBytes)];
 
       final response = await model.generateContent([
         Content.multi([prompt, ...imageParts])

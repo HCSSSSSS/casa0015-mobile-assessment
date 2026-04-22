@@ -134,6 +134,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       if (result != null) {
         try {
           String cleanJson = result.replaceAll('```json', '').replaceAll('```', '').trim();
+          
+          // Extract content between first '{' and last '}' to handle extra text from AI
+          final start = cleanJson.indexOf('{');
+          final end = cleanJson.lastIndexOf('}');
+          if (start != -1 && end != -1) {
+            cleanJson = cleanJson.substring(start, end + 1);
+          }
+          
           final foodData = jsonDecode(cleanJson);
 
           showModalBottomSheet(
@@ -231,6 +239,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     if (result != null) {
       try {
         String cleanJson = result.replaceAll('```json', '').replaceAll('```', '').trim();
+        
+        // Extract content between first '{' and last '}' to handle extra text from AI
+        final start = cleanJson.indexOf('{');
+        final end = cleanJson.lastIndexOf('}');
+        if (start != -1 && end != -1) {
+          cleanJson = cleanJson.substring(start, end + 1);
+        }
+
         final foodData = jsonDecode(cleanJson);
         showModalBottomSheet(
           context: context,
