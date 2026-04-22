@@ -21,7 +21,7 @@ jobs:
         run: echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > .env
 
       - name: Create local.properties
-        run: echo "MAPS_API_KEY=${{ secrets.MAPS_API_KEY }}" >> local.properties
+        run: echo "MAPS_API_KEY=${{ secrets.MAPS_API_KEY }}" > android/local.properties
 
       - name: Install yq
         uses: mikefarah/yq@v4.42.1
