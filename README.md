@@ -6,12 +6,14 @@ SenseFood is a Flutter mobile application developed for CASA0015: Mobile Systems
 
 ---
 
-## 📱 Download
+##  Download
 
 [![Latest Release](https://img.shields.io/github/v/release/HCSSSSSS/casa0015-mobile-assessment)](https://github.com/HCSSSSSS/casa0015-mobile-assessment/releases/latest)
 
 ---
+## 📱 Demo Video
 
+[demo.mp4](showcase/media/demo.mp4)
 
 ## ✨ Features
 
