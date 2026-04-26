@@ -6,7 +6,7 @@ SenseFood is a Flutter mobile application developed for CASA0015: Mobile Systems
 
 ---
 
-##  Download
+## Download
 
 [![Latest Release](https://img.shields.io/github/v/release/HCSSSSSS/casa0015-mobile-assessment)](https://github.com/HCSSSSSS/casa0015-mobile-assessment/releases/latest)
 
@@ -41,6 +41,7 @@ patterns.
 - **My Journal** — Chronological meal history grouped by date, with decibel and location context per entry
 - **Personalised Goals** — Onboarding captures weight, age and daily calorie target; synced to Firestore
 - **Secure & Cross-device** — Firebase Auth + Firestore cloud persistence; API keys protected via `.env`
+
 ---
 
 ## 🛠 Tech Stack
@@ -120,6 +121,7 @@ flutter run
 - `lib/screens/settings_screen.dart` — Profile & goals
 - `lib/service/ai_service.dart` — Gemini API integration
 - `lib/service/database_service.dart` — Firestore read/write
+
 ---
 
 ## 🔒 Security
