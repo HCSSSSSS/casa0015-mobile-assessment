@@ -13,7 +13,23 @@ SenseFood is a Flutter mobile application developed for CASA0015: Mobile Systems
 ---
 ## 📱 Demo Video
 
-[demo.mp4](showcase/media/demo.mp4)
+https://github.com/HCSSSSSS/casa0015-mobile-assessment/raw/main/showcase/media/demo.mp4
+
+---
+
+## 🎯 The Problem
+
+Most food tracking apps focus solely on what you eat — calories, macros, portions. 
+But research in eating behaviour shows that *where* and *how* you eat profoundly 
+shapes satisfaction and intake: noisy environments accelerate eating pace, 
+and location patterns reveal habits that pure nutrition logs miss.
+
+SenseFood addresses this gap by fusing food logging with passive environmental 
+sensing. Every meal is automatically tagged with ambient noise level (dB) and 
+GPS location, turning a flat calorie diary into a contextual map of your eating 
+patterns.
+
+---
 
 ## ✨ Features
 
@@ -58,10 +74,16 @@ flutter pub get
 ```
 
 Create a `.env` file in the project root:
+
+```
 GEMINI_API_KEY=your_gemini_key_here
+```
 
 Create `android/local.properties` and add:
+
+```
 MAPS_API_KEY=your_maps_key_here
+```
 
 Replace `android/app/google-services.json` with your own Firebase config file.
 
